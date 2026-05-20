@@ -12,21 +12,28 @@
 
 ## ブランチ運用
 
-- Custom 用の作業ブランチは `custom/` プレフィックスを使うこと。
-	- 例: `custom/add-deploy-script`, `custom/fix-windows-path`
+- Custom 用の作業ブランチは `feature/` プレフィックスを使うこと。
+	- 例: `feature/add-deploy-script`, `feature/fix-windows-path`
 - upstream 由来のタスクブランチ(`tasks/back-xxx-...`)とは混在させないこと。
 - `main` は本 Fork の最新状態、`upstream-main` は upstream 追従用として扱う。
+
+## 言語ルール
+
+- Custom 配下のコード内コメント、コミットメッセージ本文、ドキュメント(Markdown 等)は日本語で書くこと。
+- ただし、識別子(関数名・変数名・ファイル名等)および技術用語はそのまま英語表記とする。
+- マーカーコメントの理由部分も日本語で記載する。
+	- 例: `// [Custom] Windows 環境でのパス区切り対応`
 
 ## 既存ファイルを変更する場合
 
 原則として `Custom/` 配下からの拡張で対応すること。やむを得ず既存ファイルを変更する場合は、変更箇所をマーカーコメントで明示し、upstream を取り込む際に追跡できる状態を保つこと。
 
-- 1 行の変更: 行末または直前に `// [Custom] <変更理由>` を付ける。
-	- 例: `const port = process.env.PORT ?? 3000; // [Custom] allow env override`
+- 1 行の変更: 行末または直前に `// [Custom] <変更理由(日本語)>` を付ける。
+	- 例: `const port = process.env.PORT ?? 3000; // [Custom] 環境変数での上書きを許可`
 - 複数行の変更: 範囲を以下のマーカーで囲む。
 
 ```ts
-// [Custom:start] <変更理由>
+// [Custom:start] <変更理由(日本語)>
 ... // 変更コード
 // [Custom:end]
 ```
