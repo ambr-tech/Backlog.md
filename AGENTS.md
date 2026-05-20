@@ -100,3 +100,5 @@ are found, the commit will be blocked until fixed.
 - **Committing**: Use the following format: `BACK-123 - Title of the task`
 - **PR titles**: Use `{taskId} - {taskTitle}` (e.g. `BACK-123 - Title of the task`)
 - **Github CLI**: Use `gh` whenever possible for PRs and issues
+
+@FORK_NOTES.md
