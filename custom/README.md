@@ -83,6 +83,9 @@ bun run cli -- <subcommand>
 # 例: タスク一覧
 bun run cli -- task list
 
+# 例: Web UI をブラウザで開く (既定ポート 6420 で自動起動)
+bun run cli -- browser
+
 # MCP サーバーをソースから直接起動 (stdio)
 bun run mcp
 
