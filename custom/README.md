@@ -46,28 +46,10 @@ custom/               # Fork 独自のファイル配置先 (本ファイル含�
 
 ### 3.1 Bun のインストール (バージョン固定)
 
-`1.3.x` には websocket の CPU リグレッションがあり `backlog browser` が影響を受けるため、**必ず `1.2.23` に固定する**。
-
-手順は「通常インストール → `bun upgrade` で 1.2.23 に揃える」の 2 ステップ。
-
-**Step 1: Bun を通常インストール**
-
-Windows (PowerShell):
-
-```powershell
-powershell -c "irm bun.sh/install.ps1 | iex"
-```
-
-macOS / Linux (bash):
+`1.3.x` には websocket の CPU リグレッションがあり `backlog browser` が影響を受けるため、**必ず `1.2.23` をインストールする**。Windows / macOS / Linux いずれも npm でバージョン固定インストールする。
 
 ```bash
-curl -fsSL https://bun.sh/install | bash
-```
-
-**Step 2: 1.2.23 へ固定**
-
-```bash
-bun upgrade 1.2.23
+npm install -g bun@1.2.23
 ```
 
 **バージョン確認:**
@@ -75,6 +57,8 @@ bun upgrade 1.2.23
 ```bash
 bun --version   # => 1.2.23
 ```
+
+> 既に新しい Bun (例: `1.3.14`) が入っている場合も、上記コマンドで `1.2.23` が上書きインストールされるので、追加のアンインストールは不要。
 
 ### 3.2 依存関係のインストール
 
