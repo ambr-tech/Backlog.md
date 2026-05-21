@@ -1,5 +1,6 @@
 // [Custom] Assignee / Labels の入力でサジェスト + キーボードナビゲーションを提供するチップ入力
 import React, { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { debugLog } from "../suggest-chip-debug/log";
 
 export interface SuggestChipInputProps {
 	value: string[];
@@ -26,6 +27,18 @@ export const SuggestChipInput: React.FC<SuggestChipInputProps> = ({
 	const inputId = `suggest-chip-input-${name}`;
 	const blurTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+	// [debug] props.value の変化を追跡（親側の state 更新がここに反映されるかを観察）
+	const prevValueRef = useRef<string[]>(value);
+	useEffect(() => {
+		if (prevValueRef.current !== value) {
+			debugLog(`SuggestChipInput(${name})`, "props.value changed", {
+				prev: prevValueRef.current,
+				next: value,
+			});
+			prevValueRef.current = value;
+		}
+	}, [value, name]);
+
 	useEffect(() => {
 		return () => {
 			if (blurTimerRef.current) clearTimeout(blurTimerRef.current);
@@ -46,12 +59,22 @@ export const SuggestChipInput: React.FC<SuggestChipInputProps> = ({
 
 	const commit = (text: string) => {
 		const trimmed = text.trim();
+		debugLog(`SuggestChipInput(${name})`, "commit() called", {
+			text,
+			trimmed,
+			currentValue: value,
+			inputValue,
+		});
 		if (!trimmed) {
 			setInputValue("");
 			return;
 		}
 		if (!value.includes(trimmed)) {
-			onChange([...value, trimmed]);
+			const nextValue = [...value, trimmed];
+			debugLog(`SuggestChipInput(${name})`, "commit() calling onChange", { nextValue });
+			onChange(nextValue);
+		} else {
+			debugLog(`SuggestChipInput(${name})`, "commit() skipped (duplicate)", { trimmed });
 		}
 		setInputValue("");
 		setOpen(false);
@@ -72,6 +95,13 @@ export const SuggestChipInput: React.FC<SuggestChipInputProps> = ({
 		}
 		if ((e.key === "Enter" || e.key === ",") && inputValue.trim()) {
 			e.preventDefault();
+			debugLog(`SuggestChipInput(${name})`, "keyDown commit trigger", {
+				key: e.key,
+				inputValue,
+				hasSuggestions,
+				selectedIndex,
+				picked: hasSuggestions ? filtered[selectedIndex] : null,
+			});
 			if (hasSuggestions && filtered[selectedIndex]) {
 				commit(filtered[selectedIndex]);
 			} else {
@@ -194,6 +224,7 @@ export const SuggestChipInput: React.FC<SuggestChipInputProps> = ({
 								// onMouseDown は input の blur より先に発火するため、blur 経由のクローズ前に確定できる
 								onMouseDown={(e) => {
 									e.preventDefault();
+									debugLog(`SuggestChipInput(${name})`, "suggestion mouseDown", { item });
 									commit(item);
 								}}
 								className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors duration-200 ${

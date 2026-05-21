@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BudgetFields } from "../../../custom/src/budget/web/BudgetFields"; // [Custom] 予算管理機能の委譲呼び出し
 import type { AcceptanceCriterion, Milestone, Task } from "../../types";
 import Modal from "./Modal";
@@ -10,6 +10,7 @@ import MermaidMarkdown from './MermaidMarkdown';
 // [Custom] ChipInput 直接利用は廃止し、SuggestChipInput 経由でサジェスト機能付きに置換
 import { SuggestChipInput } from "../../../custom/src/suggest-chip-input/SuggestChipInput";
 import { isTypingInTextField } from "../../../custom/src/keyboard-shortcuts/isTypingInTextField"; // [Custom] テキスト入力中の単独キーショートカット誤発火を防止
+import { debugLog as suggestChipDebugLog } from "../../../custom/src/suggest-chip-debug/log"; // [Custom] Assignee/Labels 入力消失の原因調査用
 import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 
@@ -300,8 +301,31 @@ export const TaskDetailsModal: React.FC<Props> = ({
     return () => window.removeEventListener("keydown", onKey, { capture: true } as any);
   }, [mode, title, description, plan, notes, finalSummary, criteria, definitionOfDone, status]);
 
+  // [Custom] Assignee/Labels 入力消失バグ修正: 同一 task が再レンダリングされただけのとき state を巻き戻さないためのガード
+  const lastResetKeyRef = useRef<string | null>(null);
+
   // Reset local state when task changes or modal opens
   useEffect(() => {
+    // [Custom:start] 同一性キー (task.id + isOpen + mode) が変わらない限り state を初期化しない
+    // refresh 経由で availableStatuses / defaultDefinitionOfDone 等の参照が新しくなっても
+    // 楽観的更新中の assignee / labels を巻き戻さないようにする
+    const resetKey = isOpen ? `${task?.id ?? "__create__"}:${isCreateMode ? "create" : "edit"}` : null;
+    if (resetKey === lastResetKeyRef.current) {
+      suggestChipDebugLog("TaskDetailsModal", "reset useEffect skipped (same key)", { resetKey });
+      return;
+    }
+    lastResetKeyRef.current = resetKey;
+    // [Custom:end]
+    // [Custom] Assignee/Labels 入力消失調査: task / isOpen の変化で state が巻き戻されている疑い
+    suggestChipDebugLog("TaskDetailsModal", "reset useEffect fired", {
+      taskId: task?.id,
+      taskAssignee: task?.assignee ?? [],
+      taskLabels: task?.labels ?? [],
+      currentAssignee: assignee,
+      currentLabels: labels,
+      isOpen,
+      isCreateMode,
+    });
     setTitle(task?.title || "");
     setDescription(task?.description || "");
     setPlan(task?.implementationPlan || "");
@@ -531,6 +555,14 @@ export const TaskDetailsModal: React.FC<Props> = ({
     // Don't allow updates for cross-branch tasks
     if (isFromOtherBranch) return;
 
+    // [Custom] Assignee/Labels 入力消失調査: 楽観的更新 → API → onSaved の各段階を追跡
+    suggestChipDebugLog("TaskDetailsModal", "handleInlineMetaUpdate start", {
+      taskId: task?.id,
+      updates: updates as unknown as Record<string, unknown>,
+      currentAssignee: assignee,
+      currentLabels: labels,
+    });
+
     // Optimistic UI
     if (updates.status !== undefined) setStatus(String(updates.status));
     if (updates.assignee !== undefined) setAssignee(updates.assignee as string[]);
@@ -543,9 +575,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
     // Only update server if editing existing task
     if (task) {
       try {
+        suggestChipDebugLog("TaskDetailsModal", "updateTask request", { taskId: task.id });
         await apiClient.updateTask(task.id, updates);
-        if (onSaved) await onSaved();
+        suggestChipDebugLog("TaskDetailsModal", "updateTask response received", { taskId: task.id });
+        if (onSaved) {
+          suggestChipDebugLog("TaskDetailsModal", "onSaved start (refreshData)", { taskId: task.id });
+          await onSaved();
+          suggestChipDebugLog("TaskDetailsModal", "onSaved completed", { taskId: task.id });
+        }
       } catch (err) {
+        suggestChipDebugLog("TaskDetailsModal", "updateTask failed", { error: String(err) });
         console.error("Failed to update task metadata", err);
         // No rollback for simplicity; caller can refresh
       }
@@ -998,7 +1037,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
               name="assignee"
               label=""
               value={assignee}
-              onChange={(value) => handleInlineMetaUpdate({ assignee: value })}
+              onChange={(value) => {
+                // [Custom] Assignee/Labels 入力消失調査
+                suggestChipDebugLog("TaskDetailsModal", "Assignee onChange (from SuggestChipInput)", {
+                  taskId: task?.id,
+                  incoming: value,
+                  currentAssigneeState: assignee,
+                  currentTaskAssignee: task?.assignee ?? [],
+                });
+                handleInlineMetaUpdate({ assignee: value });
+              }}
               suggestions={uniqueAssignees}
               placeholder="Type name and press Enter"
               disabled={isFromOtherBranch}
@@ -1013,7 +1061,16 @@ export const TaskDetailsModal: React.FC<Props> = ({
               name="labels"
               label=""
               value={labels}
-              onChange={(value) => handleInlineMetaUpdate({ labels: value })}
+              onChange={(value) => {
+                // [Custom] Assignee/Labels 入力消失調査
+                suggestChipDebugLog("TaskDetailsModal", "Labels onChange (from SuggestChipInput)", {
+                  taskId: task?.id,
+                  incoming: value,
+                  currentLabelsState: labels,
+                  currentTaskLabels: task?.labels ?? [],
+                });
+                handleInlineMetaUpdate({ labels: value });
+              }}
               suggestions={uniqueLabels}
               placeholder="Type label and press Enter or comma"
               disabled={isFromOtherBranch}
