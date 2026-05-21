@@ -1,0 +1,17 @@
+// [Custom] タスク詳細 URL の組み立て・解析を行う純関数群
+
+const TASK_PATH_PATTERN = /^\/tasks\/(task-[A-Za-z0-9_-]+)\/?$/;
+
+export function parseTaskPath(pathname: string): string | null {
+	const match = pathname.match(TASK_PATH_PATTERN);
+	return match?.[1] ?? null;
+}
+
+export function buildTaskPath(taskId: string, search = ""): string {
+	const normalizedSearch = search && !search.startsWith("?") ? `?${search}` : search;
+	return `/tasks/${taskId}${normalizedSearch}`;
+}
+
+export function isTaskPath(pathname: string): boolean {
+	return TASK_PATH_PATTERN.test(pathname);
+}
