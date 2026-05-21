@@ -1,6 +1,8 @@
 // [Custom] タスク詳細 URL の組み立て・解析を行う純関数群
 
-const TASK_PATH_PATTERN = /^\/tasks\/(task-[A-Za-z0-9_-]+)\/?$/;
+// `/`, `?`, `#` を含まない 1 セグメントを taskId として抽出する。
+// プロジェクト毎にプレフィックスが異なる (`task-`, `BACK-` 等) ため、形式は限定しない。
+const TASK_PATH_PATTERN = /^\/tasks\/([^/?#]+)\/?$/;
 
 export function parseTaskPath(pathname: string): string | null {
 	const match = pathname.match(TASK_PATH_PATTERN);

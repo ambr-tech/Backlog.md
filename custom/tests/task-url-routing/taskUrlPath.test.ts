@@ -8,11 +8,15 @@ describe("parseTaskPath", () => {
 		["/tasks/task-123", "task-123"],
 		["/tasks/task-abc_def-1", "task-abc_def-1"],
 		["/tasks/task-001/", "task-001"],
+		// プレフィックスは backlog/config.yml で変更可能。任意プレフィックスを受け付けること。
+		["/tasks/BACK-217", "BACK-217"],
+		["/tasks/PROJ-1", "PROJ-1"],
+		["/tasks/123", "123"],
 	])("parseTaskPath(%p) === %p", (input, expected) => {
 		expect(parseTaskPath(input)).toBe(expected);
 	});
 
-	test.each(["/tasks", "/tasks/", "/", "/tasks/task-001/extra", "/tasks/foo-001", "/other/task-001"])(
+	test.each(["/tasks", "/tasks/", "/", "/tasks/task-001/extra", "/other/task-001"])(
 		"parseTaskPath(%p) === null",
 		(input) => {
 			expect(parseTaskPath(input)).toBeNull();
@@ -41,6 +45,9 @@ describe("buildTaskPath", () => {
 describe("isTaskPath", () => {
 	test("/tasks/task-001 は true", () => {
 		expect(isTaskPath("/tasks/task-001")).toBe(true);
+	});
+	test("/tasks/BACK-217 (任意プレフィックス) も true", () => {
+		expect(isTaskPath("/tasks/BACK-217")).toBe(true);
 	});
 	test("/tasks は false", () => {
 		expect(isTaskPath("/tasks")).toBe(false);
