@@ -531,6 +531,7 @@ function App() {
                 archivedMilestones={archivedMilestones}
                 onEditTask={handleEditTask}
                 onRefreshData={refreshData}
+                config={config}
               />
             }
           />

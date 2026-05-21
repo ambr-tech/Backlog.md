@@ -1,4 +1,6 @@
 import React from "react";
+import { formatDays } from "../../../custom/src/budget/format"; // [Custom] 予算管理機能の委譲呼び出し
+import "../../../custom/src/budget/types"; // [Custom] 予算管理機能の型 augmentation
 import type { Task } from "../../types";
 
 interface MilestoneTaskRowProps {
@@ -68,6 +70,16 @@ const MilestoneTaskRow: React.FC<MilestoneTaskRowProps> = ({
 			) : (
 				<span className="text-xs text-gray-300 dark:text-gray-600">—</span>
 			)}
+		</div>
+		{/* [Custom] 予算管理機能: 見積/実績/完了日のインライン表示 */}
+		<div
+			className={`col-span-full pl-8 text-[11px] text-gray-500 dark:text-gray-400 flex flex-wrap gap-x-3 ${
+				task.estimatedDays === undefined && task.actualDays === undefined && !task.completedDate ? "hidden" : ""
+			}`}
+		>
+			{task.estimatedDays !== undefined && <span>見積 {formatDays(task.estimatedDays)}</span>}
+			{task.actualDays !== undefined && <span>実績 {formatDays(task.actualDays)}</span>}
+			{task.completedDate && <span>完了 {task.completedDate}</span>}
 		</div>
 	</div>
 );

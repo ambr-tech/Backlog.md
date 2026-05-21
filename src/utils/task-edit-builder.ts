@@ -1,3 +1,4 @@
+import "../../custom/src/budget/types.ts"; // [Custom] 予算管理機能の型 augmentation を取り込み
 import type { TaskUpdateInput } from "../types/index.ts";
 import type { TaskEditArgs } from "../types/task-edit-args.ts";
 import { normalizeStringList } from "./task-builders.ts";
@@ -204,6 +205,23 @@ export function buildTaskUpdateInput(args: TaskEditArgs): TaskUpdateInput {
 	if (Array.isArray(args.definitionOfDoneUncheck) && args.definitionOfDoneUncheck.length > 0) {
 		updateInput.uncheckDefinitionOfDone = [...args.definitionOfDoneUncheck];
 	}
+
+	// [Custom:start] 予算管理機能: budget フィールドを TaskUpdateInput に流す
+	const budgetArgs = args as TaskEditArgs & {
+		estimatedDays?: number | null;
+		actualDays?: number | null;
+		completedDate?: string | null;
+	};
+	if (budgetArgs.estimatedDays !== undefined) {
+		updateInput.estimatedDays = budgetArgs.estimatedDays;
+	}
+	if (budgetArgs.actualDays !== undefined) {
+		updateInput.actualDays = budgetArgs.actualDays;
+	}
+	if (budgetArgs.completedDate !== undefined) {
+		updateInput.completedDate = budgetArgs.completedDate;
+	}
+	// [Custom:end]
 
 	return updateInput;
 }

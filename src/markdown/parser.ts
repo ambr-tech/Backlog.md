@@ -1,4 +1,5 @@
 import matter from "gray-matter";
+import { applyBudgetFromFrontmatter } from "../../custom/src/budget/frontmatter.ts"; // [Custom] 予算管理機能の委譲呼び出し
 import type { AcceptanceCriterion, Decision, Document, Milestone, ParsedMarkdown, Task } from "../types/index.ts";
 import {
 	AcceptanceCriteriaManager,
@@ -162,7 +163,7 @@ export function parseTask(content: string): Task {
 	const notesSection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.implementationNotes) || undefined;
 	const finalSummarySection = extractStructuredSection(rawContent, STRUCTURED_SECTION_KEYS.finalSummary) || undefined;
 
-	return {
+	const task: Task = {
 		id: String(frontmatter.id || ""),
 		title: String(frontmatter.title || ""),
 		status: String(frontmatter.status || ""),
@@ -193,6 +194,7 @@ export function parseTask(content: string): Task {
 		ordinal: frontmatter.ordinal !== undefined ? Number(frontmatter.ordinal) : undefined,
 		onStatusChange: frontmatter.onStatusChange ? String(frontmatter.onStatusChange) : undefined,
 	};
+	return applyBudgetFromFrontmatter(task, frontmatter); // [Custom] 予算管理機能の委譲呼び出し
 }
 
 export function parseDecision(content: string): Decision {

@@ -1,3 +1,4 @@
+import { budgetCreateSchemaProperties, budgetEditSchemaProperties } from "../../../custom/src/budget/mcp/schema.ts"; // [Custom] 予算管理機能の委譲呼び出し
 import { DEFAULT_STATUSES } from "../../constants/index.ts";
 import type { BacklogConfig } from "../../types/index.ts";
 import type { JsonSchema } from "../validation/validators.ts";
@@ -132,6 +133,7 @@ export function generateTaskCreateSchema(config: BacklogConfig): JsonSchema {
 				type: "string",
 				maxLength: 50,
 			},
+			...budgetCreateSchemaProperties, // [Custom] 予算管理機能の委譲呼び出し
 		},
 		required: ["title"],
 		additionalProperties: false,
@@ -379,6 +381,7 @@ export function generateTaskEditSchema(config: BacklogConfig): JsonSchema {
 				maxItems: 50,
 				description: "Mark task-specific Definition of Done items as incomplete by 1-based index on this task.",
 			},
+			...budgetEditSchemaProperties, // [Custom] 予算管理機能の委譲呼び出し
 		},
 		required: ["id"],
 		additionalProperties: false,

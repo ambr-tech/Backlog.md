@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { BudgetFields } from "../../../custom/src/budget/web/BudgetFields"; // [Custom] 予算管理機能の委譲呼び出し
 import type { AcceptanceCriterion, Milestone, Task } from "../../types";
 import Modal from "./Modal";
 import { apiClient } from "../lib/api";
@@ -35,8 +36,12 @@ type TaskUpdatePayload = Partial<Task> & {
   disableDefinitionOfDoneDefaults?: boolean;
 };
 
-type InlineMetaUpdatePayload = Omit<Partial<Task>, "milestone"> & {
+type InlineMetaUpdatePayload = Omit<Partial<Task>, "milestone" | "estimatedDays" | "actualDays" | "completedDate"> & {
   milestone?: string | null;
+  // [Custom] 予算管理機能: null によるクリアを許可
+  estimatedDays?: number | null;
+  actualDays?: number | null;
+  completedDate?: string | null;
 };
 
 const SectionHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => (
@@ -1037,6 +1042,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
               ))}
             </select>
           </div>
+
+          {/* [Custom] 予算管理機能の委譲呼び出し */}
+          <BudgetFields
+            task={task}
+            disabled={isFromOtherBranch}
+            onChange={(updates) => handleInlineMetaUpdate(updates as InlineMetaUpdatePayload)}
+          />
 
           {/* Dependencies */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
