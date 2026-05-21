@@ -1,19 +1,29 @@
-// [Custom] タスク詳細 URL の組み立て・解析を行う純関数群
+// [Custom] タスク詳細を URL のクエリパラメータ (?task=<id>) として表現するための純関数群。
+// pathname ではなく search 文字列を扱うのは、Kanban / Milestones / All Tasks 等のベース画面を
+// 維持したままモーダルを重ねるため (Routes 再評価で画面が TaskList に切り替わるのを避ける)。
 
-// `/`, `?`, `#` を含まない 1 セグメントを taskId として抽出する。
-// プロジェクト毎にプレフィックスが異なる (`task-`, `BACK-` 等) ため、形式は限定しない。
-const TASK_PATH_PATTERN = /^\/tasks\/([^/?#]+)\/?$/;
+const TASK_QUERY_KEY = "task";
 
-export function parseTaskPath(pathname: string): string | null {
-	const match = pathname.match(TASK_PATH_PATTERN);
-	return match?.[1] ?? null;
+export function parseTaskId(search: string): string | null {
+	const params = new URLSearchParams(search);
+	const value = params.get(TASK_QUERY_KEY);
+	return value && value.length > 0 ? value : null;
 }
 
-export function buildTaskPath(taskId: string, search = ""): string {
-	const normalizedSearch = search && !search.startsWith("?") ? `?${search}` : search;
-	return `/tasks/${taskId}${normalizedSearch}`;
+export function buildSearchWithTaskId(search: string, taskId: string): string {
+	const params = new URLSearchParams(search);
+	params.set(TASK_QUERY_KEY, taskId);
+	const s = params.toString();
+	return s ? `?${s}` : "";
 }
 
-export function isTaskPath(pathname: string): boolean {
-	return TASK_PATH_PATTERN.test(pathname);
+export function buildSearchWithoutTaskId(search: string): string {
+	const params = new URLSearchParams(search);
+	params.delete(TASK_QUERY_KEY);
+	const s = params.toString();
+	return s ? `?${s}` : "";
+}
+
+export function hasTaskId(search: string): boolean {
+	return parseTaskId(search) !== null;
 }

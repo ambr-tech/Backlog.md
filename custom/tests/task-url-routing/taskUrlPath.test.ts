@@ -1,58 +1,90 @@
-// [Custom] タスク URL 解析・組み立てユニットテスト
+// [Custom] タスク URL (クエリパラメータ駆動) ユニットテスト
 import { describe, expect, test } from "bun:test";
-import { buildTaskPath, isTaskPath, parseTaskPath } from "../../src/task-url-routing/taskUrlPath";
+import {
+	buildSearchWithTaskId,
+	buildSearchWithoutTaskId,
+	hasTaskId,
+	parseTaskId,
+} from "../../src/task-url-routing/taskUrlPath";
 
-describe("parseTaskPath", () => {
+describe("parseTaskId", () => {
 	test.each([
-		["/tasks/task-001", "task-001"],
-		["/tasks/task-123", "task-123"],
-		["/tasks/task-abc_def-1", "task-abc_def-1"],
-		["/tasks/task-001/", "task-001"],
-		// プレフィックスは backlog/config.yml で変更可能。任意プレフィックスを受け付けること。
-		["/tasks/BACK-217", "BACK-217"],
-		["/tasks/PROJ-1", "PROJ-1"],
-		["/tasks/123", "123"],
-	])("parseTaskPath(%p) === %p", (input, expected) => {
-		expect(parseTaskPath(input)).toBe(expected);
+		["?task=BACK-222", "BACK-222"],
+		["?task=task-001", "task-001"],
+		["?task=PROJ-1", "PROJ-1"],
+		["?task=123", "123"],
+		["?status=Active&task=BACK-222", "BACK-222"],
+		["?task=BACK-222&status=Active", "BACK-222"],
+	])("parseTaskId(%p) === %p", (input, expected) => {
+		expect(parseTaskId(input)).toBe(expected);
 	});
 
-	test.each(["/tasks", "/tasks/", "/", "/tasks/task-001/extra", "/other/task-001"])(
-		"parseTaskPath(%p) === null",
+	test.each(["", "?", "?status=Active", "?task=", "?other=BACK-222"])(
+		"parseTaskId(%p) === null",
 		(input) => {
-			expect(parseTaskPath(input)).toBeNull();
+			expect(parseTaskId(input)).toBeNull();
 		},
 	);
 });
 
-describe("buildTaskPath", () => {
-	test("クエリ無しは pathname のみ", () => {
-		expect(buildTaskPath("task-001")).toBe("/tasks/task-001");
+describe("buildSearchWithTaskId", () => {
+	test("空 search に task を追加", () => {
+		expect(buildSearchWithTaskId("", "BACK-222")).toBe("?task=BACK-222");
 	});
 
-	test("空文字のクエリも pathname のみ", () => {
-		expect(buildTaskPath("task-001", "")).toBe("/tasks/task-001");
+	test("既存 search に task を追加 (他キー維持)", () => {
+		expect(buildSearchWithTaskId("?status=Active", "BACK-222")).toBe("?status=Active&task=BACK-222");
 	});
 
-	test("? 付きのクエリはそのまま付与", () => {
-		expect(buildTaskPath("task-001", "?status=Active")).toBe("/tasks/task-001?status=Active");
+	test("既存 task を上書き", () => {
+		expect(buildSearchWithTaskId("?task=OLD-1", "NEW-2")).toBe("?task=NEW-2");
 	});
 
-	test("? 無しのクエリには ? を補完", () => {
-		expect(buildTaskPath("task-001", "status=Active&sort=date")).toBe("/tasks/task-001?status=Active&sort=date");
+	test("既存 task と他キーがある場合、task のみ上書き", () => {
+		expect(buildSearchWithTaskId("?status=A&task=OLD-1", "NEW-2")).toBe("?status=A&task=NEW-2");
+	});
+
+	test("? なし入力でも動作する", () => {
+		expect(buildSearchWithTaskId("status=Active", "BACK-222")).toBe("?status=Active&task=BACK-222");
 	});
 });
 
-describe("isTaskPath", () => {
-	test("/tasks/task-001 は true", () => {
-		expect(isTaskPath("/tasks/task-001")).toBe(true);
+describe("buildSearchWithoutTaskId", () => {
+	test("task のみの search → 空文字", () => {
+		expect(buildSearchWithoutTaskId("?task=BACK-222")).toBe("");
 	});
-	test("/tasks/BACK-217 (任意プレフィックス) も true", () => {
-		expect(isTaskPath("/tasks/BACK-217")).toBe(true);
+
+	test("task + 他キー → 他キーのみ残る", () => {
+		expect(buildSearchWithoutTaskId("?status=Active&task=BACK-222")).toBe("?status=Active");
 	});
-	test("/tasks は false", () => {
-		expect(isTaskPath("/tasks")).toBe(false);
+
+	test("task なし → そのまま", () => {
+		expect(buildSearchWithoutTaskId("?status=Active")).toBe("?status=Active");
 	});
-	test("/ は false", () => {
-		expect(isTaskPath("/")).toBe(false);
+
+	test("空 search → 空文字", () => {
+		expect(buildSearchWithoutTaskId("")).toBe("");
+	});
+});
+
+describe("hasTaskId", () => {
+	test("task パラメータあり → true", () => {
+		expect(hasTaskId("?task=BACK-222")).toBe(true);
+	});
+
+	test("task と他キー混在 → true", () => {
+		expect(hasTaskId("?status=A&task=BACK-222")).toBe(true);
+	});
+
+	test("空文字 → false", () => {
+		expect(hasTaskId("")).toBe(false);
+	});
+
+	test("他キーのみ → false", () => {
+		expect(hasTaskId("?status=Active")).toBe(false);
+	});
+
+	test("task キーだけあって値が空 → false", () => {
+		expect(hasTaskId("?task=")).toBe(false);
 	});
 });

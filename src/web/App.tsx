@@ -531,24 +531,6 @@ function App() {
 	                />
 	              }
 	            />
-            {/* [Custom:start] /tasks/:taskId 直接アクセス対応 — 一覧と同じ TaskList を再利用しモーダルは TaskUrlSync が開く */}
-            <Route
-              path="tasks/:taskId"
-              element={
-                <TaskList
-                  onEditTask={handleEditTask}
-                  onNewTask={handleNewTask}
-                  tasks={tasks}
-                  availableStatuses={statuses}
-                  availableLabels={availableLabels}
-                  availableMilestones={milestones}
-                  milestoneEntities={milestoneEntities}
-                  archivedMilestones={archivedMilestones}
-                  onRefreshData={refreshData}
-                />
-              }
-            />
-            {/* [Custom:end] */}
             <Route
               path="milestones"
               element={
