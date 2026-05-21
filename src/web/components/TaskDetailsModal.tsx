@@ -9,6 +9,7 @@ import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
 import MermaidMarkdown from './MermaidMarkdown';
 // [Custom] ChipInput 直接利用は廃止し、SuggestChipInput 経由でサジェスト機能付きに置換
 import { SuggestChipInput } from "../../../custom/src/suggest-chip-input/SuggestChipInput";
+import { isTypingInTextField } from "../../../custom/src/keyboard-shortcuts/isTypingInTextField"; // [Custom] テキスト入力中の単独キーショートカット誤発火を防止
 import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 
@@ -283,12 +284,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
         e.stopPropagation();
         void handleSave();
       }
-      if (mode === "preview" && (e.key.toLowerCase() === "e") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      const isTyping = isTypingInTextField(e.target); // [Custom] 単独キーショートカットはテキスト入力中に抑制
+      if (mode === "preview" && !isTyping && (e.key.toLowerCase() === "e") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         setMode("edit");
       }
-      if (mode === "preview" && isDoneStatus && (e.key.toLowerCase() === "c") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (mode === "preview" && !isTyping && isDoneStatus && (e.key.toLowerCase() === "c") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         e.stopPropagation();
         void handleComplete();
