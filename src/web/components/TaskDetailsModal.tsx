@@ -7,7 +7,8 @@ import { useTheme } from "../contexts/ThemeContext";
 import MDEditor from "@uiw/react-md-editor";
 import AcceptanceCriteriaEditor from "./AcceptanceCriteriaEditor";
 import MermaidMarkdown from './MermaidMarkdown';
-import ChipInput from "./ChipInput";
+// [Custom] ChipInput 直接利用は廃止し、SuggestChipInput 経由でサジェスト機能付きに置換
+import { SuggestChipInput } from "../../../custom/src/suggest-chip-input/SuggestChipInput";
 import DependencyInput from "./DependencyInput";
 import { formatStoredUtcDateForDisplay } from "../utils/date-display";
 
@@ -234,6 +235,17 @@ export const TaskDetailsModal: React.FC<Props> = ({
   const [availableTasks, setAvailableTasks] = useState<Task[]>([]);
   const milestoneSelectionValue = resolveMilestoneToId(milestone);
   const hasMilestoneSelection = (milestoneEntities ?? []).some((milestoneEntity) => milestoneEntity.id === milestoneSelectionValue);
+
+  // [Custom:start] Assignee/Labels サジェスト元の抽出
+  const uniqueAssignees = useMemo(
+    () => Array.from(new Set(availableTasks.flatMap((t) => t.assignee ?? []))).sort(),
+    [availableTasks],
+  );
+  const uniqueLabels = useMemo(
+    () => Array.from(new Set(availableTasks.flatMap((t) => t.labels ?? []))).sort(),
+    [availableTasks],
+  );
+  // [Custom:end]
 
   // Keep a baseline for dirty-check
   const baseline = useMemo(() => ({
@@ -979,11 +991,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {/* Assignee */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Assignee" />
-            <ChipInput
+            {/* [Custom] Assignee サジェスト + キーボードナビゲーション */}
+            <SuggestChipInput
               name="assignee"
               label=""
               value={assignee}
               onChange={(value) => handleInlineMetaUpdate({ assignee: value })}
+              suggestions={uniqueAssignees}
               placeholder="Type name and press Enter"
               disabled={isFromOtherBranch}
             />
@@ -992,11 +1006,13 @@ export const TaskDetailsModal: React.FC<Props> = ({
           {/* Labels */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
             <SectionHeader title="Labels" />
-            <ChipInput
+            {/* [Custom] Labels サジェスト + キーボードナビゲーション */}
+            <SuggestChipInput
               name="labels"
               label=""
               value={labels}
               onChange={(value) => handleInlineMetaUpdate({ labels: value })}
+              suggestions={uniqueLabels}
               placeholder="Type label and press Enter or comma"
               disabled={isFromOtherBranch}
             />
