@@ -304,6 +304,7 @@ export class BacklogServer {
 				routes: {
 					"/": spaIndexHtml,
 					"/tasks": spaIndexHtml,
+					"/tasks/*": spaIndexHtml, // [Custom] /tasks/:id への直接アクセスを SPA にフォールバック
 					"/milestones": spaIndexHtml,
 					"/drafts": spaIndexHtml,
 					"/documentation": spaIndexHtml,

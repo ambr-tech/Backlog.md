@@ -10,6 +10,7 @@ import Settings from './components/Settings';
 import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
+import { TaskUrlSync } from '../../custom/src/task-url-routing/TaskUrlSync'; // [Custom] タスク詳細モーダルと URL の同期
 import InitializationScreen from './components/InitializationScreen';
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -472,6 +473,15 @@ function App() {
   return (
     <ThemeProvider>
       <BrowserRouter>
+        {/* [Custom] URL とタスクモーダル開閉を同期 */}
+        <TaskUrlSync
+          tasks={tasks}
+          editingTask={editingTask}
+          showModal={showModal}
+          isLoading={isLoading}
+          onOpenTask={handleEditTask}
+          onCloseTask={handleCloseModal}
+        />
         <Routes>
             <Route
             path="/"
