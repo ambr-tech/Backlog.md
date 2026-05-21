@@ -11,18 +11,6 @@ import {
 	parseTaskId,
 } from "./taskUrlPath.ts";
 
-// [Custom] 調査用ログの共通プレフィックス。本番では LOG_ENABLED を false に
-const LOG_PREFIX = "[TaskUrlSync]";
-const LOG_ENABLED = true;
-const log = (label: string, payload?: Record<string, unknown>) => {
-	if (!LOG_ENABLED) return;
-	if (payload) {
-		console.log(`${LOG_PREFIX} ${label}`, payload);
-	} else {
-		console.log(`${LOG_PREFIX} ${label}`);
-	}
-};
-
 interface Props {
 	tasks: Task[];
 	editingTask: Task | null;
@@ -67,53 +55,25 @@ export const TaskUrlSync: React.FC<Props> = ({
 		navigateRef.current = navigate;
 	});
 
-	// マウント時の状態を 1 度だけログ
-	useEffect(() => {
-		log("mount", {
-			pathname: location.pathname,
-			search: location.search,
-			isDirectAccess: isDirectAccessRef.current,
-		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
-
 	// URL -> state: search の task クエリに応じてモーダルを開く。URL 変化時のみ発火する。
 	useEffect(() => {
 		const urlTaskId = parseTaskId(location.search);
 		const currentEditingTask = editingTaskRef.current;
 		const currentShowModal = showModalRef.current;
 		const currentTasks = tasksRef.current;
-		const currentIsLoading = isLoadingRef.current;
 		const onOpenTask = onOpenTaskRef.current;
 		const onCloseTask = onCloseTaskRef.current;
-		log("effect:URL->state fire", {
-			pathname: location.pathname,
-			search: location.search,
-			urlTaskId,
-			lastSynced: lastSyncedTaskIdRef.current,
-			editingTaskId: currentEditingTask?.id ?? null,
-			showModal: currentShowModal,
-			isLoading: currentIsLoading,
-			tasksLen: currentTasks.length,
-		});
 
 		if (urlTaskId) {
-			if (lastSyncedTaskIdRef.current === urlTaskId) {
-				log("effect:URL->state skip (already synced)", { urlTaskId });
-				return;
-			}
+			if (lastSyncedTaskIdRef.current === urlTaskId) return;
 			if (currentEditingTask?.id === urlTaskId && currentShowModal) {
 				lastSyncedTaskIdRef.current = urlTaskId;
-				log("effect:URL->state align ref (state already matches URL)", { urlTaskId });
 				return;
 			}
 			const task = currentTasks.find((t) => t.id === urlTaskId);
 			if (task) {
 				lastSyncedTaskIdRef.current = urlTaskId;
-				log("effect:URL->state -> onOpenTask", { urlTaskId });
 				onOpenTask(task);
-			} else {
-				log("effect:URL->state task not found in list", { urlTaskId, tasksLen: currentTasks.length });
 			}
 			// 未発見 (削除済み等) の場合は何もしない。ロード完了後に tasks 変化で再評価される
 			return;
@@ -122,11 +82,9 @@ export const TaskUrlSync: React.FC<Props> = ({
 		// URL から task クエリが消えた (戻る等) のにモーダルが開いている場合は閉じる
 		if (currentShowModal && currentEditingTask) {
 			lastSyncedTaskIdRef.current = null;
-			log("effect:URL->state -> onCloseTask (URL has no task query but modal open)");
 			onCloseTask();
 		} else {
 			lastSyncedTaskIdRef.current = null;
-			log("effect:URL->state clear ref (no task in URL, modal closed)");
 		}
 		// 依存配列は URL の search と tasks のみ。tasks ロード完了で直リン再評価を拾うため。
 		// onOpenTask/onCloseTask は親で useCallback されていないため依存配列に入れず ref 経由で参照する。
@@ -137,41 +95,23 @@ export const TaskUrlSync: React.FC<Props> = ({
 	// 直リンのモーダル開動作は URL->state effect 側で onOpenTask が走ることで実現される。
 	const isFirstStateEffectRef = useRef(true);
 	useEffect(() => {
-		const currentLocation = locationRef.current;
-		const navigate = navigateRef.current;
-		log("effect:state->URL fire", {
-			showModal,
-			editingTaskId: editingTask?.id ?? null,
-			pathname: currentLocation.pathname,
-			search: currentLocation.search,
-			lastSynced: lastSyncedTaskIdRef.current,
-			isFirstMount: isFirstStateEffectRef.current,
-		});
-
 		if (isFirstStateEffectRef.current) {
 			isFirstStateEffectRef.current = false;
-			log("effect:state->URL skip (initial mount)");
 			return;
 		}
+		const currentLocation = locationRef.current;
+		const navigate = navigateRef.current;
 
 		// 編集モード (既存タスク) を開いた時のみ URL を書き換える。新規作成 (editingTask === null) は対象外
 		if (showModal && editingTask) {
-			if (lastSyncedTaskIdRef.current === editingTask.id) {
-				log("effect:state->URL skip (already synced via ref)", { taskId: editingTask.id });
-				return;
-			}
+			if (lastSyncedTaskIdRef.current === editingTask.id) return;
 			const currentTaskId = parseTaskId(currentLocation.search);
 			if (currentTaskId === editingTask.id) {
 				lastSyncedTaskIdRef.current = editingTask.id;
-				log("effect:state->URL align ref (URL already matches state)", { taskId: editingTask.id });
 				return;
 			}
 			lastSyncedTaskIdRef.current = editingTask.id;
 			const nextSearch = buildSearchWithTaskId(currentLocation.search, editingTask.id);
-			log("effect:state->URL navigate(push)", {
-				from: `${currentLocation.pathname}${currentLocation.search}`,
-				to: `${currentLocation.pathname}${nextSearch}`,
-			});
 			navigate({ pathname: currentLocation.pathname, search: nextSearch });
 			return;
 		}
@@ -183,19 +123,10 @@ export const TaskUrlSync: React.FC<Props> = ({
 				// 直接アクセスで開いたタブは履歴が無いため replace で task クエリを外す
 				isDirectAccessRef.current = false;
 				const nextSearch = buildSearchWithoutTaskId(currentLocation.search);
-				log("effect:state->URL navigate(replace) -> remove task query (direct access fallback)", {
-					to: `${currentLocation.pathname}${nextSearch}`,
-				});
 				navigate({ pathname: currentLocation.pathname, search: nextSearch }, { replace: true });
 			} else {
-				log("effect:state->URL navigate(-1) (back to previous URL)");
 				navigate(-1);
 			}
-		} else {
-			log("effect:state->URL no-op", {
-				showModal,
-				hasTaskId: hasTaskId(currentLocation.search),
-			});
 		}
 	}, [showModal, editingTask]);
 
