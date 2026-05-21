@@ -1,4 +1,5 @@
-import type { Milestone, MilestoneBucket, MilestoneSummary, Task } from "../types/index.ts";
+import { applyBudgetRollupAll } from "../../custom/src/budget/rollup.ts"; // [Custom] 予算管理機能の委譲呼び出し
+import type { BacklogConfig, Milestone, MilestoneBucket, MilestoneSummary, Task } from "../types/index.ts";
 
 const NO_MILESTONE_KEY = "__none";
 
@@ -318,7 +319,7 @@ export function buildMilestoneBuckets(
 	tasks: Task[],
 	milestoneEntities: Milestone[],
 	statuses: string[],
-	options?: { archivedMilestoneIds?: string[]; archivedMilestones?: Milestone[] },
+	options?: { archivedMilestoneIds?: string[]; archivedMilestones?: Milestone[]; config?: BacklogConfig | null }, // [Custom] 予算管理機能: 完了判定用 config を任意渡し
 ): MilestoneBucket[] {
 	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
 	const canonicalTasks = canonicalizeTaskMilestones(tasks, milestoneEntities, options?.archivedMilestones ?? []);
@@ -344,6 +345,7 @@ export function buildMilestoneBuckets(
 		...allMilestoneIds.map((m) => createBucket(m, normalizedTasks, statuses, filteredMilestones, false)),
 	];
 
+	applyBudgetRollupAll(buckets, options?.config ?? null); // [Custom] 予算管理機能の委譲呼び出し
 	return buckets;
 }
 
@@ -354,7 +356,7 @@ export function buildMilestoneSummary(
 	tasks: Task[],
 	milestoneEntities: Milestone[],
 	statuses: string[],
-	options?: { archivedMilestoneIds?: string[]; archivedMilestones?: Milestone[] },
+	options?: { archivedMilestoneIds?: string[]; archivedMilestones?: Milestone[]; config?: BacklogConfig | null }, // [Custom] 予算管理機能: 完了判定用 config を任意渡し
 ): MilestoneSummary {
 	const archivedKeys = new Set((options?.archivedMilestoneIds ?? []).map((id) => milestoneKey(id)));
 	const canonicalTasks = canonicalizeTaskMilestones(tasks, milestoneEntities, options?.archivedMilestones ?? []);

@@ -1,4 +1,6 @@
 import { rename as moveFile } from "node:fs/promises";
+import { formatDays } from "../../../../custom/src/budget/format.ts"; // [Custom] 予算管理機能の委譲呼び出し
+import { computeBudgetRollup } from "../../../../custom/src/budget/rollup.ts"; // [Custom] 予算管理機能の委譲呼び出し
 import type { Core } from "../../../core/backlog.ts";
 import type { Milestone, Task } from "../../../types/index.ts";
 import { BacklogToolError } from "../../errors/mcp-errors.ts";
@@ -319,8 +321,29 @@ export class MilestoneHandlers {
 			.map(([, value]) => value)
 			.sort((a, b) => a.localeCompare(b));
 
+		// [Custom:start] 予算管理機能: milestone 行に予算ロールアップを併記
+		const budgetConfig = await this.core.filesystem.loadConfig();
+		const milestoneLines = fileMilestones.map((m) => {
+			const milestoneTasks = tasks.filter((task) => {
+				const key = milestoneKey(task.milestone ?? "");
+				return key === milestoneKey(m.id) || key === milestoneKey(m.title);
+			});
+			const rollup = computeBudgetRollup(milestoneTasks, budgetConfig);
+			const budgetParts: string[] = [];
+			if (rollup.totalActualDays !== undefined || rollup.totalEstimatedDays !== undefined) {
+				budgetParts.push(`Budget ${formatDays(rollup.totalActualDays)} / ${formatDays(rollup.totalEstimatedDays)}`);
+			}
+			if (rollup.unestimatedTaskCount > 0) {
+				budgetParts.push(`unestimated ${rollup.unestimatedTaskCount}`);
+			}
+			if (rollup.doneWithoutActualCount > 0) {
+				budgetParts.push(`done-without-actual ${rollup.doneWithoutActualCount}`);
+			}
+			const suffix = budgetParts.length > 0 ? ` [${budgetParts.join(", ")}]` : "";
+			return `${m.id}: ${m.title}${suffix}`;
+		});
+		// [Custom:end]
 		const blocks: string[] = [];
-		const milestoneLines = fileMilestones.map((m) => `${m.id}: ${m.title}`);
 		blocks.push(formatListBlock(`Milestones (${fileMilestones.length}):`, milestoneLines));
 		blocks.push(formatListBlock(`Milestones found on tasks without files (${unconfigured.length}):`, unconfigured));
 		blocks.push(

@@ -37,6 +37,9 @@ export interface TaskEditArgs {
 	definitionOfDoneRemove?: number[];
 	definitionOfDoneCheck?: number[];
 	definitionOfDoneUncheck?: number[];
+	estimatedDays?: number | null; // [Custom] 予算管理機能: 見積工数（null でクリア）
+	actualDays?: number | null; // [Custom] 予算管理機能: 実績工数（null でクリア）
+	completedDate?: string | null; // [Custom] 予算管理機能: 完了実績日（null でクリア）
 }
 
 export type TaskEditRequest = TaskEditArgs & { id: string };

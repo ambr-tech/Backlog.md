@@ -1,9 +1,10 @@
 import React, { useMemo, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import Fuse from "fuse.js";
+import { BudgetSummary } from "../../../custom/src/budget/web/BudgetSummary"; // [Custom] 予算管理機能の委譲呼び出し
 import { apiClient } from "../lib/api";
 import { buildMilestoneBuckets, collectArchivedMilestoneKeys, isDoneStatus, milestoneKey } from "../utils/milestones";
-import { type Milestone, type MilestoneBucket, type Task } from "../../types";
+import { type BacklogConfig, type Milestone, type MilestoneBucket, type Task } from "../../types";
 import MilestoneTaskRow from "./MilestoneTaskRow";
 import Modal from "./Modal";
 
@@ -48,6 +49,7 @@ interface MilestonesPageProps {
 	archivedMilestones: Milestone[];
 	onEditTask: (task: Task) => void;
 	onRefreshData?: () => Promise<void>;
+	config?: BacklogConfig | null; // [Custom] 予算管理機能: 完了状態判定のため
 }
 
 const MilestonesPage: React.FC<MilestonesPageProps> = ({
@@ -57,6 +59,7 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 	archivedMilestones,
 	onEditTask,
 	onRefreshData,
+	config,
 }) => {
 	const [newMilestone, setNewMilestone] = useState("");
 	const [error, setError] = useState<string | null>(null);
@@ -84,8 +87,8 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 		[archivedMilestones, milestoneEntities],
 	);
 	const buckets = useMemo(
-		() => buildMilestoneBuckets(tasks, milestoneEntities, statuses, { archivedMilestoneIds, archivedMilestones }),
-		[tasks, milestoneEntities, statuses, archivedMilestoneIds, archivedMilestones],
+		() => buildMilestoneBuckets(tasks, milestoneEntities, statuses, { archivedMilestoneIds, archivedMilestones, config }), // [Custom] 予算管理機能: 完了判定 config を渡す
+		[tasks, milestoneEntities, statuses, archivedMilestoneIds, archivedMilestones, config],
 	);
 	const searchQueryTrimmed = searchQuery.trim();
 	const isSearchActive = searchQueryTrimmed.length > 0;
@@ -532,6 +535,9 @@ const MilestonesPage: React.FC<MilestonesPageProps> = ({
 							<div className="h-full bg-emerald-500 transition-all duration-300" style={{ width: `${progress}%` }} />
 						</div>
 					)}
+
+					{/* [Custom] 予算管理機能の委譲呼び出し */}
+					{!isEmpty && <BudgetSummary bucket={bucket} />}
 
 					{/* Status breakdown - only for non-empty */}
 					{!isEmpty && (

@@ -1,4 +1,5 @@
 import matter from "gray-matter";
+import { applyBudgetToFrontmatter } from "../../custom/src/budget/frontmatter.ts"; // [Custom] 予算管理機能の委譲呼び出し
 import type { AcceptanceCriterion, Decision, Document, Task } from "../types/index.ts";
 import { normalizeAssignee } from "../utils/assignee.ts";
 import {
@@ -52,6 +53,7 @@ export function serializeTask(task: Task): string {
 		...(task.ordinal !== undefined && { ordinal: task.ordinal }),
 		...(task.onStatusChange && { onStatusChange: task.onStatusChange }),
 	};
+	applyBudgetToFrontmatter(frontmatter, task); // [Custom] 予算管理機能の委譲呼び出し
 
 	let contentBody = task.rawContent ?? "";
 	const rawContent = task.rawContent ?? "";

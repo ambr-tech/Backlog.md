@@ -1,5 +1,7 @@
 import { rename as moveFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { applyBudgetCreateInput, applyBudgetUpdateInput } from "../../custom/src/budget/apply-input.ts"; // [Custom] 予算管理機能の委譲呼び出し
+import { applyCompletedDateOnCreate, applyCompletedDateOnTransition } from "../../custom/src/budget/auto-complete-date.ts"; // [Custom] 予算管理機能の委譲呼び出し
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
@@ -1054,6 +1056,9 @@ export class Core {
 				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
 			};
 
+			applyBudgetCreateInput(task, input); // [Custom] 予算管理機能: 入力からの値の取り込み
+			applyCompletedDateOnCreate(task, config); // [Custom] 予算管理機能: 完了状態で新規作成時の自動セット
+
 			const filePath = await this.writePreparedTask(task, isDraft);
 			return { task, filePath };
 		});
@@ -1082,6 +1087,9 @@ export class Core {
 		const oldStatus = originalTask?.status ?? "";
 		const newStatus = task.status ?? "";
 		const statusChanged = oldStatus !== newStatus;
+
+		const budgetConfig = await this.fs.loadConfig(); // [Custom] 予算管理機能: 完了状態遷移時の completedDate 自動セット
+		applyCompletedDateOnTransition(originalTask, task, budgetConfig); // [Custom] 予算管理機能の委譲呼び出し
 
 		// Always set updatedDate when updating a task
 		task.updatedDate = new Date().toISOString().slice(0, 16).replace("T", " ");
@@ -1588,6 +1596,11 @@ export class Core {
 		}
 
 		task.definitionOfDoneItems = definitionOfDone;
+
+		const budgetApplied = applyBudgetUpdateInput(task, input); // [Custom] 予算管理機能の委譲呼び出し
+		if (budgetApplied.mutated) {
+			mutated = true;
+		}
 
 		return { task, mutated };
 	}

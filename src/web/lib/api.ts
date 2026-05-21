@@ -238,7 +238,13 @@ export class ApiClient {
 
 	async updateTask(
 		id: string,
-		updates: Omit<Partial<Task>, "milestone"> & { milestone?: string | null },
+		updates: Omit<Partial<Task>, "milestone" | "estimatedDays" | "actualDays" | "completedDate"> & {
+			milestone?: string | null;
+			// [Custom] 予算管理機能: null によるクリアを許可
+			estimatedDays?: number | null;
+			actualDays?: number | null;
+			completedDate?: string | null;
+		},
 	): Promise<Task> {
 		return this.fetchJson<Task>(`${API_BASE}/tasks/${id}`, {
 			method: "PUT",

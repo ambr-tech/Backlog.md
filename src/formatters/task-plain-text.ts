@@ -1,3 +1,5 @@
+import "../../custom/src/budget/types.ts"; // [Custom] 予算管理機能の型 augmentation を取り込み
+import { formatDays } from "../../custom/src/budget/format.ts"; // [Custom] 予算管理機能の委譲呼び出し
 import type { Task } from "../types/index.ts";
 import type { ChecklistItem } from "../ui/checklist.ts";
 import { transformCodePathsPlain } from "../ui/code-path.ts";
@@ -102,6 +104,18 @@ export function formatTaskPlainText(task: Task, options: TaskPlainTextOptions = 
 	if (task.milestone) {
 		lines.push(`Milestone: ${task.milestone}`);
 	}
+
+	// [Custom:start] 予算管理機能: 見積/実績/完了日の表示
+	if (task.estimatedDays !== undefined) {
+		lines.push(`Estimated: ${formatDays(task.estimatedDays)}`);
+	}
+	if (task.actualDays !== undefined) {
+		lines.push(`Actual: ${formatDays(task.actualDays)}`);
+	}
+	if (task.completedDate) {
+		lines.push(`Completed: ${task.completedDate}`);
+	}
+	// [Custom:end]
 
 	if (task.parentTaskId) {
 		const parentLabel = task.parentTaskTitle ? `${task.parentTaskId} - ${task.parentTaskTitle}` : task.parentTaskId;

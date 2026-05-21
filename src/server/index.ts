@@ -1,6 +1,7 @@
 import { dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
+import "../../custom/src/budget/types.ts"; // [Custom] 予算管理機能の型 augmentation を取り込み
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
@@ -841,6 +842,10 @@ export class BacklogServer {
 				acceptanceCriteria,
 				definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults,
+				// [Custom] 予算管理機能の入力を委譲
+				...(typeof payload.estimatedDays === "number" ? { estimatedDays: payload.estimatedDays } : {}),
+				...(typeof payload.actualDays === "number" ? { actualDays: payload.actualDays } : {}),
+				...(typeof payload.completedDate === "string" ? { completedDate: payload.completedDate } : {}),
 			});
 			return Response.json(createdTask, { status: 201 });
 		} catch (error) {
@@ -967,6 +972,27 @@ export class BacklogServer {
 				(value: unknown) => typeof value === "number" && Number.isFinite(value),
 			);
 		}
+
+		// [Custom:start] 予算管理機能: budget フィールドを TaskUpdateInput へ受け流す
+		if ("estimatedDays" in updates) {
+			const value = updates.estimatedDays;
+			if (value === null || typeof value === "number") {
+				updateInput.estimatedDays = value;
+			}
+		}
+		if ("actualDays" in updates) {
+			const value = updates.actualDays;
+			if (value === null || typeof value === "number") {
+				updateInput.actualDays = value;
+			}
+		}
+		if ("completedDate" in updates) {
+			const value = updates.completedDate;
+			if (value === null || typeof value === "string") {
+				updateInput.completedDate = value;
+			}
+		}
+		// [Custom:end]
 
 		try {
 			const updatedTask = await this.core.updateTaskFromInput(taskId, updateInput);

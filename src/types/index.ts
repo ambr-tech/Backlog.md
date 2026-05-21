@@ -309,6 +309,7 @@ export interface BacklogConfig {
 	onStatusChange?: string;
 	/** ID prefix configuration for tasks and drafts. Defaults to { task: "task", draft: "draft" } */
 	prefixes?: PrefixConfig;
+	completedStatuses?: string[]; // [Custom] 予算管理機能: 完了として扱う status 集合。未指定時は statuses の末尾要素にフォールバック
 	mcp?: {
 		http?: {
 			host?: string;

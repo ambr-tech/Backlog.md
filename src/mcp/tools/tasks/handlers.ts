@@ -39,6 +39,10 @@ export type TaskCreateArgs = {
 	documentation?: string[];
 	modifiedFiles?: string[];
 	finalSummary?: string;
+	// [Custom] 予算管理機能のフィールド
+	estimatedDays?: number;
+	actualDays?: number;
+	completedDate?: string;
 };
 
 export type TaskListArgs = {
@@ -127,6 +131,10 @@ export class TaskHandlers {
 				acceptanceCriteria,
 				definitionOfDoneAdd: args.definitionOfDoneAdd,
 				disableDefinitionOfDoneDefaults: args.disableDefinitionOfDoneDefaults,
+				// [Custom] 予算管理機能の入力を委譲
+				estimatedDays: args.estimatedDays,
+				actualDays: args.actualDays,
+				completedDate: args.completedDate,
 			});
 
 			return await formatTaskCallResult(createdTask);
