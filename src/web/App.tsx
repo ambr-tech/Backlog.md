@@ -11,7 +11,6 @@ import Statistics from './components/Statistics';
 import MilestonesPage from './components/MilestonesPage';
 import TaskDetailsModal from './components/TaskDetailsModal';
 import { TaskUrlSync } from '../../custom/src/task-url-routing/TaskUrlSync'; // [Custom] タスク詳細モーダルと URL の同期
-import { debugLog as suggestChipDebugLog } from '../../custom/src/suggest-chip-debug/log'; // [Custom] Assignee/Labels 入力消失の原因調査用
 import InitializationScreen from './components/InitializationScreen';
 import { SuccessToast } from './components/SuccessToast';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -393,14 +392,6 @@ function App() {
     if (editingTask && showModal) {
       const updatedTask = tasks.find(t => t.id === editingTask.id);
       if (updatedTask && updatedTask !== editingTask) {
-        // [Custom] Assignee/Labels 入力消失調査: refresh 後の editingTask 差し替えを追跡
-        suggestChipDebugLog("App", "editingTask sync from refreshed tasks", {
-          taskId: editingTask.id,
-          prevAssignee: editingTask.assignee ?? [],
-          nextAssignee: updatedTask.assignee ?? [],
-          prevLabels: editingTask.labels ?? [],
-          nextLabels: updatedTask.labels ?? [],
-        });
         setEditingTask(updatedTask);
       }
     }
@@ -411,8 +402,6 @@ function App() {
     const ws = new WebSocket(`${protocol}//${window.location.host}`);
     ws.onmessage = (event) => {
       if (event.data === "tasks-updated") {
-        // [Custom] Assignee/Labels 入力消失調査: WebSocket 由来の refresh が入力中に走るとレースの原因になり得る
-        suggestChipDebugLog("App", "WebSocket tasks-updated -> refreshData", {});
         refreshData();
       } else if (event.data === "config-updated") {
         // Reload statuses when config changes
