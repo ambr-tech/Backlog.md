@@ -108,6 +108,30 @@ bun run build
 `bun run build` は `build:css` → `bun build --production --compile --minify` の順で実行し、`__EMBEDDED_VERSION__` を埋め込む。
 ビルド後は `./dist/backlog --help` で動作確認できる。
 
+#### クロスプラットフォームビルド (Windows + macOS arm64)
+
+手元で Windows / macOS 両方のバイナリをまとめて生成する場合は `scripts/build-cross.ps1` を使う。
+実行内容としては`build:css` を実行した上で、`bun-windows-x64-baseline` と `bun-darwin-arm64` 向けに `bun build --compile --minify` を順に呼び、`__EMBEDDED_VERSION__` には `package.json` の `version` の埋め込みを行う。
+
+```powershell
+# PowerShell から直接実行
+./scripts/build-cross.ps1
+```
+
+```cmd
+:: cmd / エクスプローラから実行する場合は同梱の .bat を使う
+scripts\build-cross.bat
+```
+
+成果物は `dist/` に出力される。
+
+| ターゲット | 出力 |
+|------------|------|
+| Windows x64 | `dist/backlog.exe` |
+| macOS arm64 | `dist/backlog` |
+
+> 配布用の公式リリースは GitHub Actions 側で行うため、本スクリプトはあくまで Fork でのローカル動作確認・配布用途。upstream の `release.yml` には触らない。
+
 ### 4.3 テスト
 
 ```bash
