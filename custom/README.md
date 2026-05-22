@@ -232,7 +232,51 @@ bun run build
 
 ---
 
-## 7. Fork 運用ルール (要点)
+## 7. Git タグの命名規則 (重要)
+
+### 7.1 リリースワークフローのトリガー
+
+タグ push に反応するワークフローは `.github/workflows/release.yml` のみで、トリガーは次の 1 行である。
+
+```yaml
+on:
+  push:
+    tags: ['v*.*.*']
+```
+
+すなわち、**`v` で始まり、中にドットを 2 個以上含むタグ** がリリースを起動する (例: `v1.2.3`, `v0.0.1`, `v1.2.3-rc1`)。
+CI 用の `.github/workflows/ci.yml` と `.github/workflows/shai-hulud-check.yml` はタグでは起動しない (`branches: [main]` と `pull_request` のみ)。
+
+### 7.2 起動時の副作用
+
+`v*.*.*` 形式のタグを push すると、ワークフロー内で以下が連鎖的に実行される。
+
+- タグから先頭 `v` を剥がした値を `package.json` の `version` に書き換える。
+- `backlog.md` および `backlog.md-<os>-<arch>` の platform packages を npm publish する。
+- GitHub Release を作成し、各プラットフォーム向けバイナリを添付する。
+- `main` ブランチに `chore: sync package.json version to <tag> [skip ci]` のコミットを `stefanzweifel/git-auto-commit-action` で自動 push する。
+
+本 Fork (ambr-tech) には upstream 用の npm Trusted Publishing 権限が無いため、`v*.*.*` タグを誤って push すると、**publish は失敗するが `main` への強制コミットなど一部の副作用は走る**。事故の影響が大きいので、SemVer 形式のタグは利用しない。
+
+### 7.3 安全な命名パターン
+
+`v*.*.*` glob に一致しない名前を使う。推奨は **先頭に Fork 識別プレフィックスを付ける** 形式である。
+
+| 種類 | 例 | 反応有無 |
+|------|------|----------|
+| `v` で始まらない | `fork-v1.2.3`, `ambr-v1.2.3`, `release-1.2.3` | ❌ 反応しない (安全) |
+| `v` で始まるがドット 1 個以下 | `v1`, `v2026-05-22` | ❌ 反応しない (安全) |
+| `v` で始まりドット 2 個以上 | `v1.2.3`, `v0.0.1-fork` | ✅ 反応する (**危険**) |
+
+推奨命名: `fork-vX.Y.Z` または `ambr-vX.Y.Z`。可読性と検索性が両立し、`v*.*.*` には絶対に一致しない。
+
+### 7.4 Fork 独自リリースを動かしたくなった場合
+
+将来 Fork 専用のリリースフローを動かしたい場合は、`release.yml` の trigger を Fork 向けに変える (例: `tags: ['fork-v*.*.*']`) か、`release.yml` 自体を Fork では無効化する。upstream マージとの衝突を避けるため、必ず `[Custom]` マーカーコメントを付けて変更する。
+
+---
+
+## 8. Fork 運用ルール (要点)
 
 詳細は [`FORK_NOTES.md`](../FORK_NOTES.md) を参照。要点のみ:
 
@@ -244,7 +288,7 @@ bun run build
 
 ---
 
-## 8. トラブルシューティング
+## 9. トラブルシューティング
 
 | 症状 | 対処 |
 |------|------|
@@ -256,7 +300,7 @@ bun run build
 
 ---
 
-## 9. 参考リンク
+## 10. 参考リンク
 
 - [`README.md`](../README.md) — ユーザー向け概要
 - [`DEVELOPMENT.md`](../DEVELOPMENT.md) — 開発・MCP・リリース手順 (upstream)
