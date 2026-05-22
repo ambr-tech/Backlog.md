@@ -254,6 +254,40 @@ bun run build
 
 クロスプラットフォームのリリースは GitHub Actions (`Release multi-platform executables` workflow) と npm Trusted Publishing で行う。手元では行わない。詳細は [`DEVELOPMENT.md` の Release 節](../DEVELOPMENT.md#release) 参照。
 
+### 6.1 ビルド版を MCP サーバーとして利用する場合の PATH 設定
+
+`dist/backlog` (Windows では `dist/backlog.exe`) には CLI / TUI / Web UI / **MCP サーバー** がすべて単一バイナリに同梱されている。エージェント (Claude Code / Codex / Gemini CLI / Kiro 等) から `backlog mcp start` で起動できるようにするには、ビルド済みバイナリを **PATH の通ったディレクトリに配置するか、配置先ディレクトリを PATH に追加する** 必要がある。
+
+```powershell
+# Windows (PowerShell) の例: ユーザー環境変数 PATH に dist フォルダを追加
+$distPath = "<本リポジトリの絶対パス>\dist"
+[Environment]::SetEnvironmentVariable(
+  "PATH",
+  [Environment]::GetEnvironmentVariable("PATH", "User") + ";$distPath",
+  "User"
+)
+```
+
+```bash
+# macOS / Linux の例: ~/.zshrc などに以下を追記
+export PATH="<本リポジトリの絶対パス>/dist:$PATH"
+```
+
+設定後、新しいシェルで `backlog --version` が通ることを確認したうえで、エージェント側の MCP 設定 (例: `.mcp.json`) に次のように登録する。
+
+```json
+{
+  "mcpServers": {
+    "backlog": {
+      "command": "backlog",
+      "args": ["mcp", "start"]
+    }
+  }
+}
+```
+
+> 開発中のソース版を使う場合は [5.2 節](#52-mcp-サーバーのデバッグ) のとおり `bun run mcp` 経由で起動できるため、PATH 設定は不要。あくまでビルド済みバイナリを常用する場合の手順である。
+
 ---
 
 ## 7. Git タグの命名規則 (重要)
