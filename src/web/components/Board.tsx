@@ -3,6 +3,7 @@ import { type Milestone, type Task } from '../../types';
 import { apiClient, type ReorderTaskPayload } from '../lib/api';
 import { buildLanes, DEFAULT_LANE_KEY, groupTasksByLaneAndStatus, type LaneMode } from '../lib/lanes';
 import { collectAvailableLabels, labelsToLower } from '../../utils/label-filter';
+import { matchesAllLabels } from '../../../custom/src/label-and-filter/matchesAllLabels'; // [Custom] Labels フィルタを AND 判定に統一
 import { collectArchivedMilestoneKeys, milestoneKey } from '../utils/milestones';
 import { getTerminalStatus } from '../../utils/terminal-status';
 import TaskColumn from './TaskColumn';
@@ -241,8 +242,9 @@ const Board: React.FC<BoardProps> = ({
       result = result.filter(task => task.assignee.some(a => a.trim() === filterAssignee));
     }
     if (normalizedFilterLabels.length > 0) {
-      const selectedLabels = new Set(labelsToLower(normalizedFilterLabels));
-      result = result.filter(task => labelsToLower(task.labels).some(label => selectedLabels.has(label)));
+      // [Custom] Labels フィルタを OR から AND 判定に変更（MCP と挙動を統一）
+      const required = labelsToLower(normalizedFilterLabels);
+      result = result.filter(task => matchesAllLabels(labelsToLower(task.labels), required));
     }
     if (filterPriority) {
       result = result.filter(task => task.priority === filterPriority);

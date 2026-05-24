@@ -4,6 +4,7 @@
  */
 
 import Fuse from "fuse.js";
+import { matchesAllLabels } from "../../custom/src/label-and-filter/matchesAllLabels.ts"; // [Custom] Labels フィルタを AND 判定に統一
 import type { Task } from "../types/index.ts";
 import { NO_MILESTONE_FILTER_VALUE } from "./milestone-filter.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
@@ -174,16 +175,11 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 				results = results.filter((t) => t.priorityLower === priorityLower);
 			}
 
-			// Apply label filters (task must include any selected label)
+			// Apply label filters (task must include all selected labels)
 			if (options.labels && options.labels.length > 0) {
+				// [Custom] Labels フィルタを OR から AND 判定に変更（MCP と挙動を統一）
 				const required = options.labels.map((label) => label.toLowerCase());
-				results = results.filter((t) => {
-					if (!t.labelsLower || t.labelsLower.length === 0) {
-						return false;
-					}
-					const labelSet = new Set(t.labelsLower);
-					return required.some((label) => labelSet.has(label));
-				});
+				results = results.filter((t) => matchesAllLabels(t.labelsLower ?? [], required));
 			}
 
 			const modifiedFiles = normalizeModifiedFileFilters(options.modifiedFiles);
