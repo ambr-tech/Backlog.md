@@ -10,6 +10,7 @@ import type {
 	SearchResultType,
 	Task,
 } from "../types/index.ts";
+import { matchesAllLabels } from "../../custom/src/label-and-filter/matchesAllLabels.ts"; // [Custom] Labels フィルタを AND 判定に統一
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "../utils/modified-files.ts";
 import type { ContentStore, ContentStoreEvent } from "./content-store.ts";
 
@@ -340,13 +341,9 @@ export class SearchService {
 			});
 		}
 		if (filters.labels && filters.labels.length > 0) {
-			const requiredLabels = new Set(filters.labels);
-			filtered = filtered.filter((task) => {
-				if (!task.labelsLower || task.labelsLower.length === 0) {
-					return false;
-				}
-				return task.labelsLower.some((label) => requiredLabels.has(label));
-			});
+			// [Custom] Labels フィルタを OR から AND 判定に変更（MCP と挙動を統一）
+			const requiredLabels = filters.labels;
+			filtered = filtered.filter((task) => matchesAllLabels(task.labelsLower ?? [], requiredLabels));
 		}
 		if (filters.modifiedFiles && filters.modifiedFiles.length > 0) {
 			filtered = filtered.filter((task) => matchesModifiedFileFilters(task.modifiedFiles, filters.modifiedFiles));
@@ -379,12 +376,8 @@ export class SearchService {
 		}
 
 		if (filters.labels && filters.labels.length > 0) {
-			if (!task.labelsLower || task.labelsLower.length === 0) {
-				return false;
-			}
-			const labelSet = new Set(task.labelsLower);
-			const anyMatch = filters.labels.some((label) => labelSet.has(label));
-			if (!anyMatch) {
+			// [Custom] Labels フィルタを OR から AND 判定に変更（MCP と挙動を統一）
+			if (!matchesAllLabels(task.labelsLower ?? [], filters.labels)) {
 				return false;
 			}
 		}

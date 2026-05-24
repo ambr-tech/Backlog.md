@@ -230,10 +230,19 @@ describe("Web board filters", () => {
 		expect(new URLSearchParams(window.location.search).getAll("label")).toEqual(["bug"]);
 		expectVisibleTasks(container, ["Fix login bug"]);
 
+		// [Custom:start] Labels フィルタを AND 判定に変更したため検証内容を更新
+		// 2つ目のラベルを追加すると AND 条件になり、両方のラベルを持つタスクのみ残る
 		await toggleCheckbox(getBoardLabelCheckbox(container, "enhancement"));
 		expect(new URLSearchParams(window.location.search).getAll("label")).toEqual(["bug", "enhancement"]);
 		expect(getBoardLabelsButton(container).textContent).toContain("2 selected");
-		expectVisibleTasks(container, ["Fix login bug", "Improve board"]);
+		// "bug" と "enhancement" の両方を持つタスクはないため表示は空になる
+		expectVisibleTasks(container, []);
+
+		// "enhancement" を外して "bug" のみに戻す
+		await toggleCheckbox(getBoardLabelCheckbox(container, "enhancement"));
+		expect(new URLSearchParams(window.location.search).getAll("label")).toEqual(["bug"]);
+		expectVisibleTasks(container, ["Fix login bug"]);
+		// [Custom:end]
 
 		await setSelectValue(getSelectByFirstOption(container, "All priorities"), "high");
 		expect(new URLSearchParams(window.location.search).get("priority")).toBe("high");
