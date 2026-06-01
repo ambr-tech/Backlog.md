@@ -290,6 +290,7 @@ export interface BacklogConfig {
 	defaultStatus?: string;
 	dateFormat: string;
 	maxColumnWidth?: number;
+	minColumnWidth?: number; // [Custom] Web UI のボード/リスト表示でのカラム最小幅（文字数, ch）
 	taskResolutionStrategy?: "most_recent" | "most_progressed";
 	defaultEditor?: string;
 	autoOpenBrowser?: boolean;

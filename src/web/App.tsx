@@ -523,6 +523,7 @@ function App() {
                 milestoneEntities={milestoneEntities}
                 archivedMilestones={archivedMilestones}
                 isLoading={isLoading}
+                minColumnWidth={config?.minColumnWidth}
               />
             }
           />
@@ -539,6 +540,7 @@ function App() {
 	                  milestoneEntities={milestoneEntities}
 	                  archivedMilestones={archivedMilestones}
 	                  onRefreshData={refreshData}
+	                  minColumnWidth={config?.minColumnWidth}
 	                />
 	              }
 	            />

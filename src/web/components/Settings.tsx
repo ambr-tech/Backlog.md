@@ -381,6 +381,24 @@ const Settings: React.FC = () => {
 							</div>
 
 							<div>
+								<label htmlFor="minColumnWidth" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+									Min Column Width
+								</label>
+								<input
+									id="minColumnWidth"
+									type="number"
+									min="1"
+									max="100"
+									value={config.minColumnWidth ?? ''}
+									onChange={(e) => handleInputChange('minColumnWidth', parseInt(e.target.value) || undefined)}
+									className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-stone-500 dark:focus:ring-stone-400 transition-colors duration-200"
+								/>
+								<p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+									Minimum width (in characters) for board and list columns in the web UI
+								</p>
+							</div>
+
+							<div>
 								<label htmlFor="taskResolutionStrategy" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
 									Task Resolution Strategy
 								</label>

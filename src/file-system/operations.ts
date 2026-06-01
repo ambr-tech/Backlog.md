@@ -1378,6 +1378,9 @@ ${description || `Milestone: ${title}`}`,
 				case "max_column_width":
 					config.maxColumnWidth = Number.parseInt(value, 10);
 					break;
+				case "min_column_width":
+					config.minColumnWidth = Number.parseInt(value, 10);
+					break;
 				case "default_editor":
 					config.defaultEditor = value.replace(/["']/g, "");
 					break;
@@ -1434,6 +1437,7 @@ ${description || `Milestone: ${title}`}`,
 			defaultStatus: config.defaultStatus,
 			dateFormat: config.dateFormat || "yyyy-mm-dd",
 			maxColumnWidth: config.maxColumnWidth,
+			minColumnWidth: config.minColumnWidth,
 			defaultEditor: config.defaultEditor,
 			autoOpenBrowser: config.autoOpenBrowser,
 			defaultPort: config.defaultPort,
@@ -1464,6 +1468,7 @@ ${description || `Milestone: ${title}`}`,
 				: []),
 			`date_format: ${config.dateFormat}`,
 			...(config.maxColumnWidth ? [`max_column_width: ${config.maxColumnWidth}`] : []),
+			...(config.minColumnWidth ? [`min_column_width: ${config.minColumnWidth}`] : []),
 			...(config.defaultEditor ? [`default_editor: "${config.defaultEditor}"`] : []),
 			...(typeof config.autoOpenBrowser === "boolean" ? [`auto_open_browser: ${config.autoOpenBrowser}`] : []),
 			...(config.defaultPort ? [`default_port: ${config.defaultPort}`] : []),

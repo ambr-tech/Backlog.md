@@ -30,6 +30,7 @@ interface BoardProps {
   filterLabels?: string[];
   filterPriority?: string;
   onFiltersChange?: (filters: { assignee: string; labels: string[]; priority: string }) => void;
+  minColumnWidth?: number; // [Custom] ボードのカラム最小幅（文字数, ch）。未指定時は既定の 16rem
 }
 
 const PRIORITY_OPTIONS = [
@@ -63,7 +64,9 @@ const Board: React.FC<BoardProps> = ({
   filterLabels = [],
   filterPriority = '',
   onFiltersChange,
+  minColumnWidth,
 }) => {
+  const columnMinWidth = minColumnWidth ? `${minColumnWidth}ch` : undefined;
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [dragSourceStatus, setDragSourceStatus] = useState<string | null>(null);
   const [dragSourceLane, setDragSourceLane] = useState<string | null>(null);
@@ -585,7 +588,7 @@ const Board: React.FC<BoardProps> = ({
                 {/* Lane content - columns */}
                 {!isCollapsed && (
                   <div className="p-4">
-                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${statuses.length}, minmax(0, 1fr))` }}>
+                    <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${statuses.length}, minmax(${columnMinWidth ?? '0'}, 1fr))` }}>
                       {statuses.map((status) => (
                         <div key={`${lane.key}-${status}`} className="min-w-0">
                           <TaskColumn
@@ -621,7 +624,7 @@ const Board: React.FC<BoardProps> = ({
         <div className="overflow-x-auto pb-2">
           <div className="flex flex-row flex-nowrap gap-4 w-full">
             {statuses.map((status) => (
-              <div key={status} className="flex-1 min-w-[16rem]">
+              <div key={status} className="flex-1" style={{ minWidth: columnMinWidth ?? '16rem' }}>
                 <TaskColumn
                   title={status}
                   tasks={getTasksForLane(DEFAULT_LANE_KEY, status)}

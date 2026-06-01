@@ -25,6 +25,7 @@ interface TaskListProps {
 	milestoneEntities: Milestone[];
 	archivedMilestones: Milestone[];
 	onRefreshData?: () => Promise<void>;
+	minColumnWidth?: number; // [Custom] リスト各列の最小幅（文字数, ch）。未指定時は既定の固定幅
 }
 
 const PRIORITY_OPTIONS: Array<{ label: string; value: "" | SearchPriorityFilter }> = [
@@ -89,6 +90,7 @@ const TaskList: React.FC<TaskListProps> = ({
 	milestoneEntities,
 	archivedMilestones,
 	onRefreshData,
+	minColumnWidth,
 }) => {
 	const [searchParams, setSearchParams] = useSearchParams();
 	const [statusFilter, setStatusFilter] = useState(() => searchParams.get("status") ?? "");
@@ -502,18 +504,25 @@ const TaskList: React.FC<TaskListProps> = ({
 		</th>
 	);
 
-	const renderColumnGroup = () => (
-		<colgroup>
-			<col style={{ width: "8rem" }} />
-			<col style={{ width: "28rem" }} />
-			<col style={{ width: "8rem" }} />
-			<col style={{ width: "7rem" }} />
-			<col style={{ width: "11rem" }} />
-			<col style={{ width: "11rem" }} />
-			<col style={{ width: "11rem" }} />
-			<col style={{ width: "7rem" }} />
-		</colgroup>
-	);
+	const renderColumnGroup = () => {
+		const columns: Array<{ key: string; width: string }> = [
+			{ key: "id", width: "8rem" },
+			{ key: "title", width: "28rem" },
+			{ key: "status", width: "8rem" },
+			{ key: "priority", width: "7rem" },
+			{ key: "labels", width: "11rem" },
+			{ key: "assignee", width: "11rem" },
+			{ key: "milestone", width: "11rem" },
+			{ key: "created", width: "7rem" },
+		];
+		return (
+			<colgroup>
+				{columns.map(({ key, width }) => (
+					<col key={key} style={{ width: minColumnWidth ? `max(${width}, ${minColumnWidth}ch)` : width }} />
+				))}
+			</colgroup>
+		);
+	};
 
 	const sortedDisplayTasks = useMemo(() => {
 		const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });

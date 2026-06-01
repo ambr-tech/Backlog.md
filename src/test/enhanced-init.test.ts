@@ -135,6 +135,7 @@ describe("Enhanced init command", () => {
 			defaultStatus: "Backlog",
 			dateFormat: "dd/mm/yyyy",
 			maxColumnWidth: 30,
+			minColumnWidth: 10,
 			backlogDirectory: "backlog",
 			autoCommit: true,
 		};
@@ -149,6 +150,7 @@ describe("Enhanced init command", () => {
 		expect(existingConfig?.labels).toEqual(["bug", "feature", "enhancement"]);
 		expect(existingConfig?.dateFormat).toBe("dd/mm/yyyy");
 		expect(existingConfig?.maxColumnWidth).toBe(30);
+		expect(existingConfig?.minColumnWidth).toBe(10);
 	});
 
 	test("should preserve non-init-managed config fields during re-initialization", async () => {
