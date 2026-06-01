@@ -94,6 +94,12 @@ export const TaskUrlSync: React.FC<Props> = ({
 	// 初回マウントは skip — 直リン直アクセス時に「閉じている (false)」状態で誤って戻り動作が発生するのを防ぐ。
 	// 直リンのモーダル開動作は URL->state effect 側で onOpenTask が走ることで実現される。
 	const isFirstStateEffectRef = useRef(true);
+	// Strict Mode の cleanup → re-mount サイクルで isFirst を正しくリセットする
+	useEffect(() => {
+		return () => {
+			isFirstStateEffectRef.current = true;
+		};
+	}, []);
 	useEffect(() => {
 		if (isFirstStateEffectRef.current) {
 			isFirstStateEffectRef.current = false;
