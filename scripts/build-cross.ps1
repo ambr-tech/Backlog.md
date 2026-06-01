@@ -1,4 +1,7 @@
 #requires -Version 5.1
+param(
+  [string]$WaitOnExit = "true"
+)
 $ErrorActionPreference = "Stop"
 $exitCode = 0
 
@@ -41,11 +44,13 @@ catch {
 }
 finally {
   Write-Host ""
-  if (-not [System.Console]::IsInputRedirected) {
-    Write-Host "Press any key to exit..."
-    [void][System.Console]::ReadKey($true)
-  } else {
-    Read-Host "Press Enter to exit"
+  if ($WaitOnExit -ne "false") {
+    if (-not [System.Console]::IsInputRedirected) {
+      Write-Host "Press any key to exit..."
+      [void][System.Console]::ReadKey($true)
+    } else {
+      Read-Host "Press Enter to exit"
+    }
   }
 }
 
