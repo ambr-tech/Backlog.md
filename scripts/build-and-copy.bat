@@ -1,6 +1,6 @@
 @echo off
 echo [1/3] ビルド開始...
-call "%~dp0build-cross.bat"
+call "%~dp0build-cross-no-wait.bat"
 if %ERRORLEVEL% neq 0 (
     echo ビルドに失敗しました。処理を中断します。
     pause
