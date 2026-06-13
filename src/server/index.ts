@@ -2,6 +2,8 @@ import { dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import "../../custom/src/budget/types.ts"; // [Custom] 予算管理機能の型 augmentation を取り込み
+import { setAutoPushNotifier } from "../../custom/src/auto-push/hook.ts"; // [Custom] 自動プッシュ機能
+import { makeAutoPushBroadcaster } from "../../custom/src/auto-push/web-bridge.ts"; // [Custom] 自動プッシュ機能
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
@@ -296,6 +298,9 @@ export class BacklogServer {
 			},
 		});
 
+		// [Custom] 自動プッシュ機能: push 進捗を接続中の全クライアントへ WebSocket で通知する
+		setAutoPushNotifier(makeAutoPushBroadcaster(() => this.sockets));
+
 		try {
 			await this.ensureServicesReady();
 			const serveOptions = {
@@ -503,6 +508,9 @@ export class BacklogServer {
 			this.configWatcher?.stop();
 			this.configWatcher = null;
 		} catch {}
+
+		// [Custom] 自動プッシュ機能: push 進捗の通知先を解除
+		setAutoPushNotifier(null);
 
 		this.core.disposeSearchService();
 		this.core.disposeContentStore();

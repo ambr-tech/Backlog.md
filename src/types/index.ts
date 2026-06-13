@@ -311,6 +311,7 @@ export interface BacklogConfig {
 	defaultPort?: number;
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
+	autoPush?: boolean; // [Custom] 自動プッシュ機能: コミットのたびに git push する（デフォルト false）
 	/** Disable all Git integration for filesystem-only projects. */
 	filesystemOnly?: boolean;
 	zeroPaddedIds?: number;
