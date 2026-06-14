@@ -312,6 +312,9 @@ export interface BacklogConfig {
 	remoteOperations?: boolean;
 	autoCommit?: boolean;
 	autoPush?: boolean; // [Custom] 自動プッシュ機能: コミットのたびに git push する（デフォルト false）
+	autoPull?: boolean; // [Custom] 自動プル機能: Web UI 表示中に定期 git pull する（デフォルト false）
+	autoPullIntervalSeconds?: number; // [Custom] 自動プル機能: pull 間隔の秒数（デフォルト 60）
+	autoPullWhenUnfocused?: boolean; // [Custom] 自動プル機能: Chrome 非フォーカス時も定期 pull するか（デフォルト false）
 	/** Disable all Git integration for filesystem-only projects. */
 	filesystemOnly?: boolean;
 	zeroPaddedIds?: number;

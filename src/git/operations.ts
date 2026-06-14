@@ -3,6 +3,7 @@ import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
 import { maybeAutoPush } from "../../custom/src/auto-push/hook.ts"; // [Custom] 自動プッシュ機能
+import { runGitExclusive } from "../../custom/src/git-lock/git-mutex.ts"; // [Custom] git操作の直列化
 
 type GitPathContext = {
 	repoRoot: string;
@@ -237,6 +238,19 @@ export class GitOperations {
 		const { stdout } = await this.execGit(["branch", "--show-current"], { readOnly: true });
 		return stdout.trim();
 	}
+
+	/** [Custom] 自動プル機能: 現在の HEAD コミットハッシュ。取得できなければ null。 */
+	async getCurrentCommitHash(repoRoot?: string | null): Promise<string | null> {
+		try {
+			const { stdout } = await this.execGit(["rev-parse", "HEAD"], {
+				readOnly: true,
+				cwd: repoRoot ?? undefined,
+			});
+			return stdout.trim();
+		} catch {
+			return null;
+		}
+	}
 	async hasUncommittedChanges(): Promise<boolean> {
 		const status = await this.getStatus();
 		return status.trim() !== "";
@@ -309,6 +323,30 @@ export class GitOperations {
 		} else {
 			await this.execGit(["push", "--set-upstream", remote, "HEAD", "--quiet"], { cwd });
 		}
+		return true;
+	}
+
+	/**
+	 * [Custom] 自動プル機能: 現在のブランチに remote の変更を取り込む（通常の merge）。
+	 * pull 不要なケース（リモート操作無効 / filesystem-only / 非 git リポジトリ / remote 未設定）は
+	 * 何もせず false を返す。実際の pull 失敗（ネットワーク・認証・コンフリクト・ローカル変更衝突等）は
+	 * throw する（呼び出し側 maybeAutoPull が握って failed 通知にする）。
+	 * `--no-edit` で無人実行時にマージコミットのエディタが開かないようにする。
+	 */
+	async pull(remote = "origin", repoRoot?: string | null): Promise<boolean> {
+		if (this.config?.remoteOperations === false) {
+			return false;
+		}
+		if (this.config?.filesystemOnly) {
+			return false;
+		}
+		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
+			return false;
+		}
+		if (!(await this.hasRemote(remote))) {
+			return false;
+		}
+		await this.execGit(["pull", remote, "--no-edit", "--quiet"], { cwd: repoRoot ?? undefined });
 		return true;
 	}
 
@@ -705,29 +743,34 @@ export class GitOperations {
 		args: string[],
 		options?: { readOnly?: boolean; cwd?: string },
 	): Promise<{ stdout: string; stderr: string }> {
-		// Use Bun.spawn so we can explicitly control stdio behaviour on Windows. When running
-		// under the MCP stdio transport, delegating to git with inherited stdin can deadlock.
-		const env = options?.readOnly
-			? ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" } as Record<string, string>)
-			: (process.env as Record<string, string>);
+		// [Custom] git操作の直列化: 全 git コマンドをモジュール単位の単一キューで直列実行し、
+		// 自動 pull とユーザー操作由来の push / commit などが同時に走って index.lock 競合や
+		// index 不整合を起こすのを防ぐ。execGit は他メソッドを呼ばない単一 spawn のため再入はしない。
+		return runGitExclusive(async () => {
+			// Use Bun.spawn so we can explicitly control stdio behaviour on Windows. When running
+			// under the MCP stdio transport, delegating to git with inherited stdin can deadlock.
+			const env = options?.readOnly
+				? ({ ...process.env, GIT_OPTIONAL_LOCKS: "0" } as Record<string, string>)
+				: (process.env as Record<string, string>);
 
-		const subprocess = Bun.spawn(["git", ...args], {
-			cwd: options?.cwd ?? this.projectRoot,
-			stdin: "ignore", // avoid inheriting MCP stdio pipes which can block on Windows
-			stdout: "pipe",
-			stderr: "pipe",
-			env,
+			const subprocess = Bun.spawn(["git", ...args], {
+				cwd: options?.cwd ?? this.projectRoot,
+				stdin: "ignore", // avoid inheriting MCP stdio pipes which can block on Windows
+				stdout: "pipe",
+				stderr: "pipe",
+				env,
+			});
+
+			const stdoutPromise = subprocess.stdout ? new Response(subprocess.stdout).text() : Promise.resolve("");
+			const stderrPromise = subprocess.stderr ? new Response(subprocess.stderr).text() : Promise.resolve("");
+			const [exitCode, stdout, stderr] = await Promise.all([subprocess.exited, stdoutPromise, stderrPromise]);
+
+			if (exitCode !== 0) {
+				throw new Error(`Git command failed (exit code ${exitCode}): git ${args.join(" ")}\n${stderr}`);
+			}
+
+			return { stdout, stderr };
 		});
-
-		const stdoutPromise = subprocess.stdout ? new Response(subprocess.stdout).text() : Promise.resolve("");
-		const stderrPromise = subprocess.stderr ? new Response(subprocess.stderr).text() : Promise.resolve("");
-		const [exitCode, stdout, stderr] = await Promise.all([subprocess.exited, stdoutPromise, stderrPromise]);
-
-		if (exitCode !== 0) {
-			throw new Error(`Git command failed (exit code ${exitCode}): git ${args.join(" ")}\n${stderr}`);
-		}
-
-		return { stdout, stderr };
 	}
 
 	private async getPathContext(targetPath: string): Promise<GitPathContext | null> {

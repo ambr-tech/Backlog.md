@@ -4,6 +4,9 @@ import { $ } from "bun";
 import "../../custom/src/budget/types.ts"; // [Custom] 予算管理機能の型 augmentation を取り込み
 import { setAutoPushNotifier } from "../../custom/src/auto-push/hook.ts"; // [Custom] 自動プッシュ機能
 import { makeAutoPushBroadcaster } from "../../custom/src/auto-push/web-bridge.ts"; // [Custom] 自動プッシュ機能
+import { maybeAutoPull, setAutoPullNotifier } from "../../custom/src/auto-pull/hook.ts"; // [Custom] 自動プル機能
+import { AutoPullScheduler, DEFAULT_AUTO_PULL_INTERVAL_SECONDS } from "../../custom/src/auto-pull/scheduler.ts"; // [Custom] 自動プル機能
+import { makeAutoPullBroadcaster } from "../../custom/src/auto-pull/web-bridge.ts"; // [Custom] 自動プル機能
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
@@ -195,11 +198,17 @@ export class BacklogServer {
 	private server: Server<unknown> | null = null;
 	private projectName = "Untitled Project";
 	private sockets = new Set<ServerWebSocket<unknown>>();
+	// [Custom] 自動プル機能: OS フォーカスを持つページの接続だけを追跡する（focus/blur メッセージで増減）。
+	private focusedSockets = new Set<ServerWebSocket<unknown>>();
+	// [Custom] 自動プル機能: まだ初回 pull をしていない新規接続。最初の focus 受信時に interval を
+	// 無視して即 pull する（ページにアクセスしたら経過時間に関係なく最新を取り込むため）。
+	private pendingInitialPull = new Set<ServerWebSocket<unknown>>();
 	private contentStore: ContentStore | null = null;
 	private searchService: SearchService | null = null;
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	private autoPullScheduler: AutoPullScheduler | null = null; // [Custom] 自動プル機能
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -300,6 +309,30 @@ export class BacklogServer {
 
 		// [Custom] 自動プッシュ機能: push 進捗を接続中の全クライアントへ WebSocket で通知する
 		setAutoPushNotifier(makeAutoPushBroadcaster(() => this.sockets));
+
+		// [Custom] 自動プル機能: pull 進捗を通知し、ページを開いている間（WebSocket 接続が 1 本以上ある間）
+		// 定期的に pull する。間隔は config の auto_pull_interval_seconds（既定 60 秒）。
+		setAutoPullNotifier(makeAutoPullBroadcaster(() => this.sockets));
+		this.autoPullScheduler = new AutoPullScheduler({
+			isEnabled: () => config?.autoPull,
+			// ページが開いていて、かつ「非フォーカス時も実行」が true、または
+			// フォーカスのあるページが 1 つ以上あるときだけ pull する。
+			hasOpenPages: () => {
+				if (this.sockets.size === 0) return false;
+				if (config?.autoPullWhenUnfocused) return true; // フォーカス不問
+				return this.focusedSockets.size > 0; // フォーカス必須（既定）
+			},
+			runPull: async () => {
+				const changed = await maybeAutoPull(this.core.git, config?.autoPull, null);
+				// コミット位置が変わったとき（差分を取り込んだとき）だけ再取得を促す。
+				// HEAD が変わっていなければ取り込んだファイルも無いため、無駄な画面更新を避ける。
+				if (changed) {
+					this.broadcastTasksUpdated();
+				}
+			},
+			intervalMs: (config?.autoPullIntervalSeconds ?? DEFAULT_AUTO_PULL_INTERVAL_SECONDS) * 1000,
+		});
+		this.autoPullScheduler.start();
 
 		try {
 			await this.ensureServicesReady();
@@ -443,12 +476,31 @@ export class BacklogServer {
 				websocket: {
 					open: (ws: ServerWebSocket) => {
 						this.sockets.add(ws);
+						// [Custom] 自動プル機能: 新規接続は初回 focus で interval を無視した pull の対象にする。
+						this.pendingInitialPull.add(ws);
 					},
-					message(ws: ServerWebSocket) {
-						ws.send("pong");
+					// [Custom] 自動プル機能: focus/blur 通知で OS フォーカスを持つページを追跡する。
+					// それ以外のメッセージは従来通り keep-alive の pong を返す。
+					message: (ws: ServerWebSocket, message: string | Buffer) => {
+						const text = typeof message === "string" ? message : message.toString();
+						if (text === "focus") {
+							this.focusedSockets.add(ws);
+							// [Custom] 自動プル機能: フォーカス取得（blur→focus / 初回接続時フォーカスあり）を
+							// 契機に即 pull を試みる。focusedSockets.add の後に呼ぶこと（hasOpenPages が参照するため）。
+							// 新規接続（ページアクセス）の最初の focus は interval を無視して必ず pull する。
+							// Set.delete は要素が存在した場合に true を返すので「初回接続か」の判定に使える。
+							const isInitial = this.pendingInitialPull.delete(ws);
+							void this.autoPullScheduler?.maybePull({ force: isInitial });
+						} else if (text === "blur") {
+							this.focusedSockets.delete(ws);
+						} else {
+							ws.send("pong");
+						}
 					},
 					close: (ws: ServerWebSocket) => {
 						this.sockets.delete(ws);
+						this.focusedSockets.delete(ws); // [Custom] 自動プル機能: 切断時にフォーカス追跡からも除去
+						this.pendingInitialPull.delete(ws); // [Custom] 自動プル機能: 初回 pull 待ち集合からも除去
 					},
 				},
 				/* biome-ignore format: keep cast on single line below for type narrowing */
@@ -512,6 +564,11 @@ export class BacklogServer {
 		// [Custom] 自動プッシュ機能: push 進捗の通知先を解除
 		setAutoPushNotifier(null);
 
+		// [Custom] 自動プル機能: 定期 pull を停止し、通知先を解除
+		this.autoPullScheduler?.stop();
+		this.autoPullScheduler = null;
+		setAutoPullNotifier(null);
+
 		this.core.disposeSearchService();
 		this.core.disposeContentStore();
 		this.searchService = null;
@@ -525,6 +582,7 @@ export class BacklogServer {
 			} catch {}
 		}
 		this.sockets.clear();
+		this.focusedSockets.clear(); // [Custom] 自動プル機能: フォーカス追跡もクリア
 
 		// Attempt to stop the server but don't hang forever
 		if (this.server) {

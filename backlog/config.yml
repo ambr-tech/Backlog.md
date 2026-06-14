@@ -17,3 +17,6 @@ check_active_branches: true
 active_branch_days: 10
 task_prefix: "back"
 auto_push: false
+auto_pull: false
+auto_pull_interval_seconds: 60
+auto_pull_when_unfocused: false
