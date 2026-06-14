@@ -17,6 +17,17 @@ export function setAutoPushNotifier(fn: PushNotifier | null): void {
 	notifier = fn;
 }
 
+// [Custom] 原因調査用ログ: auto-push の各段階を `[auto-push]` プレフィックス付きで標準エラーへ出す。
+// push 失敗の理由（git の stderr を含む execGit の throw）は従来 DEBUG 時のみ出していたため
+// ヘッダの「プッシュ失敗」表示だけで原因が追えなかった。調査のため常時出力する。
+function logAutoPush(message: string, detail?: unknown): void {
+	if (detail === undefined) {
+		console.error(`[auto-push] ${message}`);
+	} else {
+		console.error(`[auto-push] ${message}`, detail);
+	}
+}
+
 /**
  * autoPush が有効なときに push を実行する。
  *
@@ -31,14 +42,25 @@ export async function maybeAutoPush(
 	repoRoot?: string | null,
 ): Promise<void> {
 	if (!enabled) return;
+	// 正常系（開始/完了）は毎コミットのノイズを避けるため DEBUG 時のみ。失敗ログは常時出す。
+	if (process.env.DEBUG) {
+		logAutoPush(`push 開始: remote=origin repoRoot=${repoRoot ?? "(projectRoot)"}`);
+	}
 	notifier?.("start");
 	try {
-		await git.push("origin", repoRoot ?? null);
+		const pushed = await git.push("origin", repoRoot ?? null);
+		// pushed=false は push() 内の事前条件（remoteOperations 無効 / filesystemOnly /
+		// 非 git リポジトリ / remote 未設定）でスキップされたことを意味する。
+		if (process.env.DEBUG) {
+			logAutoPush(pushed ? "push 完了: pushed=true" : "push スキップ: pushed=false (push() の事前条件で未実行)");
+		}
 		notifier?.("finished");
 	} catch (error) {
 		notifier?.("failed");
-		if (process.env.DEBUG) {
-			console.warn("[auto-push] push failed:", error);
+		// 調査の核心: git の実エラー（exit code と stderr を含む execGit の throw）をそのまま出す。
+		logAutoPush("push 失敗:", error);
+		if (error instanceof Error && error.stack) {
+			logAutoPush("push 失敗 (stack):", error.stack);
 		}
 	}
 }

@@ -301,8 +301,31 @@ export class GitOperations {
 		if (!(await this.hasRemote(remote))) {
 			return false;
 		}
-		await this.execGit(["push", remote, "--quiet"], { cwd: repoRoot ?? undefined });
+		const cwd = repoRoot ?? undefined;
+		// [Custom] 自動プッシュ機能: upstream 未設定の新規ブランチでも失敗しないよう、
+		// 追跡ブランチが無ければ初回 push で --set-upstream する。
+		if (await this.hasUpstream(cwd)) {
+			await this.execGit(["push", remote, "--quiet"], { cwd });
+		} else {
+			await this.execGit(["push", "--set-upstream", remote, "HEAD", "--quiet"], { cwd });
+		}
 		return true;
+	}
+
+	/**
+	 * [Custom] 自動プッシュ機能: 現在のブランチに upstream 追跡ブランチが設定済みか判定する。
+	 * `@{u}` の解決が失敗（= upstream 未設定）すれば false。終了コードで判定するためロケール非依存。
+	 */
+	private async hasUpstream(cwd?: string): Promise<boolean> {
+		try {
+			await this.execGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], {
+				readOnly: true,
+				cwd,
+			});
+			return true;
+		} catch {
+			return false;
+		}
 	}
 
 	private isNetworkError(error: unknown): boolean {
