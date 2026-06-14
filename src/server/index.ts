@@ -4,6 +4,9 @@ import { $ } from "bun";
 import "../../custom/src/budget/types.ts"; // [Custom] 予算管理機能の型 augmentation を取り込み
 import { setAutoPushNotifier } from "../../custom/src/auto-push/hook.ts"; // [Custom] 自動プッシュ機能
 import { makeAutoPushBroadcaster } from "../../custom/src/auto-push/web-bridge.ts"; // [Custom] 自動プッシュ機能
+import { maybeAutoPull, setAutoPullNotifier } from "../../custom/src/auto-pull/hook.ts"; // [Custom] 自動プル機能
+import { AutoPullScheduler, DEFAULT_AUTO_PULL_INTERVAL_SECONDS } from "../../custom/src/auto-pull/scheduler.ts"; // [Custom] 自動プル機能
+import { makeAutoPullBroadcaster } from "../../custom/src/auto-pull/web-bridge.ts"; // [Custom] 自動プル機能
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
@@ -200,6 +203,7 @@ export class BacklogServer {
 	private unsubscribeContentStore?: () => void;
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
+	private autoPullScheduler: AutoPullScheduler | null = null; // [Custom] 自動プル機能
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -300,6 +304,21 @@ export class BacklogServer {
 
 		// [Custom] 自動プッシュ機能: push 進捗を接続中の全クライアントへ WebSocket で通知する
 		setAutoPushNotifier(makeAutoPushBroadcaster(() => this.sockets));
+
+		// [Custom] 自動プル機能: pull 進捗を通知し、ページを開いている間（WebSocket 接続が 1 本以上ある間）
+		// 定期的に pull する。間隔は config の auto_pull_interval_seconds（既定 60 秒）。
+		setAutoPullNotifier(makeAutoPullBroadcaster(() => this.sockets));
+		this.autoPullScheduler = new AutoPullScheduler({
+			isEnabled: () => config?.autoPull,
+			hasOpenPages: () => this.sockets.size > 0,
+			runPull: async () => {
+				await maybeAutoPull(this.core.git, config?.autoPull, null);
+				// pull で取り込んだファイルをファイル監視が拾い損ねても確実に反映されるよう、保険で再取得を促す。
+				this.broadcastTasksUpdated();
+			},
+			intervalMs: (config?.autoPullIntervalSeconds ?? DEFAULT_AUTO_PULL_INTERVAL_SECONDS) * 1000,
+		});
+		this.autoPullScheduler.start();
 
 		try {
 			await this.ensureServicesReady();
@@ -511,6 +530,11 @@ export class BacklogServer {
 
 		// [Custom] 自動プッシュ機能: push 進捗の通知先を解除
 		setAutoPushNotifier(null);
+
+		// [Custom] 自動プル機能: 定期 pull を停止し、通知先を解除
+		this.autoPullScheduler?.stop();
+		this.autoPullScheduler = null;
+		setAutoPullNotifier(null);
 
 		this.core.disposeSearchService();
 		this.core.disposeContentStore();
