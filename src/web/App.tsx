@@ -419,7 +419,29 @@ function App() {
         loadAllData();
       }
     };
-    return () => ws.close();
+
+    // [Custom] 自動プル機能: OS フォーカスの有無をサーバへ通知する。
+    // 真実源は document.hasFocus()（= ウィンドウが OS フォーカスを持つか）。
+    // 別タブ切替・最小化を取りこぼさないよう focus/blur に加えて visibilitychange も契機にする。
+    let lastSent: "focus" | "blur" | null = null;
+    const sendFocusState = () => {
+      if (ws.readyState !== WebSocket.OPEN) return; // OPEN 前の送信は例外になるため初期送信は onopen に委ねる
+      const state: "focus" | "blur" = document.hasFocus() ? "focus" : "blur";
+      if (state === lastSent) return; // 同一状態の連投を抑止
+      lastSent = state;
+      ws.send(state);
+    };
+    ws.onopen = () => sendFocusState();
+    window.addEventListener("focus", sendFocusState);
+    window.addEventListener("blur", sendFocusState);
+    document.addEventListener("visibilitychange", sendFocusState);
+
+    return () => {
+      window.removeEventListener("focus", sendFocusState);
+      window.removeEventListener("blur", sendFocusState);
+      document.removeEventListener("visibilitychange", sendFocusState);
+      ws.close();
+    };
   }, [refreshData, loadAllData]);
 
   const handleSubmitTask = async (taskData: Partial<Task>) => {

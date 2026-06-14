@@ -1402,6 +1402,9 @@ ${description || `Milestone: ${title}`}`,
 				case "auto_pull_interval_seconds": // [Custom] 自動プル機能
 					config.autoPullIntervalSeconds = Number.parseInt(value, 10);
 					break;
+				case "auto_pull_when_unfocused": // [Custom] 自動プル機能
+					config.autoPullWhenUnfocused = value.toLowerCase() === "true";
+					break;
 				case "filesystem_only":
 				case "filesystemOnly":
 					config.filesystemOnly = value.toLowerCase() === "true";
@@ -1451,6 +1454,7 @@ ${description || `Milestone: ${title}`}`,
 			autoPush: config.autoPush, // [Custom] 自動プッシュ機能
 			autoPull: config.autoPull, // [Custom] 自動プル機能
 			autoPullIntervalSeconds: config.autoPullIntervalSeconds, // [Custom] 自動プル機能
+			autoPullWhenUnfocused: config.autoPullWhenUnfocused, // [Custom] 自動プル機能
 			filesystemOnly: config.filesystemOnly,
 			zeroPaddedIds: config.zeroPaddedIds,
 			bypassGitHooks: config.bypassGitHooks,
@@ -1485,6 +1489,9 @@ ${description || `Milestone: ${title}`}`,
 			...(typeof config.autoPull === "boolean" ? [`auto_pull: ${config.autoPull}`] : []), // [Custom] 自動プル機能
 			...(typeof config.autoPullIntervalSeconds === "number"
 				? [`auto_pull_interval_seconds: ${config.autoPullIntervalSeconds}`]
+				: []), // [Custom] 自動プル機能
+			...(typeof config.autoPullWhenUnfocused === "boolean"
+				? [`auto_pull_when_unfocused: ${config.autoPullWhenUnfocused}`]
 				: []), // [Custom] 自動プル機能
 			...(typeof config.filesystemOnly === "boolean" ? [`filesystem_only: ${config.filesystemOnly}`] : []),
 			...(typeof config.zeroPaddedIds === "number" ? [`zero_padded_ids: ${config.zeroPaddedIds}`] : []),

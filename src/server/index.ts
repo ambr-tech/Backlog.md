@@ -198,6 +198,8 @@ export class BacklogServer {
 	private server: Server<unknown> | null = null;
 	private projectName = "Untitled Project";
 	private sockets = new Set<ServerWebSocket<unknown>>();
+	// [Custom] 自動プル機能: OS フォーカスを持つページの接続だけを追跡する（focus/blur メッセージで増減）。
+	private focusedSockets = new Set<ServerWebSocket<unknown>>();
 	private contentStore: ContentStore | null = null;
 	private searchService: SearchService | null = null;
 	private unsubscribeContentStore?: () => void;
@@ -310,7 +312,13 @@ export class BacklogServer {
 		setAutoPullNotifier(makeAutoPullBroadcaster(() => this.sockets));
 		this.autoPullScheduler = new AutoPullScheduler({
 			isEnabled: () => config?.autoPull,
-			hasOpenPages: () => this.sockets.size > 0,
+			// ページが開いていて、かつ「非フォーカス時も実行」が true、または
+			// フォーカスのあるページが 1 つ以上あるときだけ pull する。
+			hasOpenPages: () => {
+				if (this.sockets.size === 0) return false;
+				if (config?.autoPullWhenUnfocused) return true; // フォーカス不問
+				return this.focusedSockets.size > 0; // フォーカス必須（既定）
+			},
 			runPull: async () => {
 				await maybeAutoPull(this.core.git, config?.autoPull, null);
 				// pull で取り込んだファイルをファイル監視が拾い損ねても確実に反映されるよう、保険で再取得を促す。
@@ -463,11 +471,21 @@ export class BacklogServer {
 					open: (ws: ServerWebSocket) => {
 						this.sockets.add(ws);
 					},
-					message(ws: ServerWebSocket) {
-						ws.send("pong");
+					// [Custom] 自動プル機能: focus/blur 通知で OS フォーカスを持つページを追跡する。
+					// それ以外のメッセージは従来通り keep-alive の pong を返す。
+					message: (ws: ServerWebSocket, message: string | Buffer) => {
+						const text = typeof message === "string" ? message : message.toString();
+						if (text === "focus") {
+							this.focusedSockets.add(ws);
+						} else if (text === "blur") {
+							this.focusedSockets.delete(ws);
+						} else {
+							ws.send("pong");
+						}
 					},
 					close: (ws: ServerWebSocket) => {
 						this.sockets.delete(ws);
+						this.focusedSockets.delete(ws); // [Custom] 自動プル機能: 切断時にフォーカス追跡からも除去
 					},
 				},
 				/* biome-ignore format: keep cast on single line below for type narrowing */
@@ -549,6 +567,7 @@ export class BacklogServer {
 			} catch {}
 		}
 		this.sockets.clear();
+		this.focusedSockets.clear(); // [Custom] 自動プル機能: フォーカス追跡もクリア
 
 		// Attempt to stop the server but don't hang forever
 		if (this.server) {
