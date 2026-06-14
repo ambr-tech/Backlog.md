@@ -19,6 +19,9 @@ export interface AutoPullSchedulerOptions {
 export class AutoPullScheduler {
 	private timer: ReturnType<typeof setInterval> | null = null;
 	private inFlight = false;
+	// 最後に pull を開始した時刻（ミリ秒）。初期 0 = 初回は必ず即 pull。
+	// 定期 tick とフォーカス取得イベントの両方がこの値を共有して interval ガードを通す。
+	private lastPullAt = 0;
 
 	constructor(private readonly options: AutoPullSchedulerOptions) {}
 
@@ -39,18 +42,28 @@ export class AutoPullScheduler {
 	}
 
 	/**
-	 * 1 回分の pull 判定と実行。interval 無しで単体テストできるよう分離している。
-	 * 前回が継続中 / フラグ OFF / 開いているページが無い、のいずれかなら何もしない。
+	 * interval ガードを通して 1 回分の pull を試みる共通入口。
+	 * 定期 tick（setInterval）からも、フォーカス取得イベント（blur→focus）からも呼ばれる。
+	 * 前回が継続中 / フラグ OFF / 開いているページが無い / 前回 pull から interval 未経過、
+	 * のいずれかなら何もしない。
 	 */
-	async tick(): Promise<void> {
+	async maybePull(): Promise<void> {
 		if (this.inFlight) return; // 前回の pull が継続中
 		if (!this.options.isEnabled()) return; // フラグ OFF
 		if (!this.options.hasOpenPages()) return; // 開いているページが無い
+		const now = Date.now();
+		if (now - this.lastPullAt < this.options.intervalMs) return; // 前回 pull から interval 未経過
+		this.lastPullAt = now; // 開始時刻を記録（連投は inFlight ガードが別途防ぐ）
 		this.inFlight = true;
 		try {
 			await this.options.runPull();
 		} finally {
 			this.inFlight = false;
 		}
+	}
+
+	/** 定期 tick の入口。interval ガード付きの maybePull に委譲する。 */
+	async tick(): Promise<void> {
+		await this.maybePull();
 	}
 }

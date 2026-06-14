@@ -238,6 +238,19 @@ export class GitOperations {
 		const { stdout } = await this.execGit(["branch", "--show-current"], { readOnly: true });
 		return stdout.trim();
 	}
+
+	/** [Custom] 自動プル機能: 現在の HEAD コミットハッシュ。取得できなければ null。 */
+	async getCurrentCommitHash(repoRoot?: string | null): Promise<string | null> {
+		try {
+			const { stdout } = await this.execGit(["rev-parse", "HEAD"], {
+				readOnly: true,
+				cwd: repoRoot ?? undefined,
+			});
+			return stdout.trim();
+		} catch {
+			return null;
+		}
+	}
 	async hasUncommittedChanges(): Promise<boolean> {
 		const status = await this.getStatus();
 		return status.trim() !== "";

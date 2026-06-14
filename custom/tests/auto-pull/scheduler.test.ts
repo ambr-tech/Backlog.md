@@ -56,7 +56,9 @@ describe("AutoPullScheduler.tick", () => {
 				}
 				return Promise.resolve();
 			},
-			intervalMs: 1000,
+			// interval ガードと干渉させず in-flight ガード単体を検証するため 0 にする
+			// （now - lastPullAt < 0 は常に false なので interval ガードは無効化される）。
+			intervalMs: 0,
 		});
 		const first = scheduler.tick(); // 走り出して未解決のまま
 		await scheduler.tick(); // in-flight 中なのでスキップされる
@@ -65,5 +67,54 @@ describe("AutoPullScheduler.tick", () => {
 		await first;
 		await scheduler.tick(); // 解放後は再び実行できる（即解決）
 		expect(runs).toBe(2);
+	});
+});
+
+describe("AutoPullScheduler.maybePull（interval ガード）", () => {
+	test("初回は lastPullAt=0 なので即 pull する", async () => {
+		const { scheduler, runs } = makeScheduler({ intervalMs: 100000 });
+		await scheduler.maybePull();
+		expect(runs()).toBe(1);
+	});
+
+	test("interval 未経過なら連続呼び出しでも 1 回だけ", async () => {
+		const { scheduler, runs } = makeScheduler({ intervalMs: 100000 });
+		await scheduler.maybePull();
+		await scheduler.maybePull(); // 直前の pull から間もないのでスキップ
+		expect(runs()).toBe(1);
+	});
+
+	test("interval 経過後は再び pull する", async () => {
+		const realNow = Date.now;
+		let now = 1000;
+		Date.now = () => now;
+		try {
+			const { scheduler, runs } = makeScheduler({ intervalMs: 1000 });
+			await scheduler.maybePull(); // now=1000, lastPullAt=0 → 経過 1000ms ≥ 1000 → pull
+			await scheduler.maybePull(); // 経過 0ms < 1000 → スキップ
+			expect(runs()).toBe(1);
+			now = 2000; // interval 経過
+			await scheduler.maybePull(); // 経過 1000ms ≥ 1000 → pull
+			expect(runs()).toBe(2);
+		} finally {
+			Date.now = realNow;
+		}
+	});
+
+	test("tick は maybePull に委譲する（interval ガードを共有）", async () => {
+		const realNow = Date.now;
+		let now = 1000;
+		Date.now = () => now;
+		try {
+			const { scheduler, runs } = makeScheduler({ intervalMs: 1000 });
+			await scheduler.tick(); // 初回 → pull
+			await scheduler.tick(); // interval 未経過 → スキップ
+			expect(runs()).toBe(1);
+			now = 2000;
+			await scheduler.tick(); // interval 経過 → pull
+			expect(runs()).toBe(2);
+		} finally {
+			Date.now = realNow;
+		}
 	});
 });

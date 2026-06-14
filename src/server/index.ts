@@ -320,9 +320,12 @@ export class BacklogServer {
 				return this.focusedSockets.size > 0; // フォーカス必須（既定）
 			},
 			runPull: async () => {
-				await maybeAutoPull(this.core.git, config?.autoPull, null);
-				// pull で取り込んだファイルをファイル監視が拾い損ねても確実に反映されるよう、保険で再取得を促す。
-				this.broadcastTasksUpdated();
+				const changed = await maybeAutoPull(this.core.git, config?.autoPull, null);
+				// コミット位置が変わったとき（差分を取り込んだとき）だけ再取得を促す。
+				// HEAD が変わっていなければ取り込んだファイルも無いため、無駄な画面更新を避ける。
+				if (changed) {
+					this.broadcastTasksUpdated();
+				}
 			},
 			intervalMs: (config?.autoPullIntervalSeconds ?? DEFAULT_AUTO_PULL_INTERVAL_SECONDS) * 1000,
 		});
@@ -477,6 +480,10 @@ export class BacklogServer {
 						const text = typeof message === "string" ? message : message.toString();
 						if (text === "focus") {
 							this.focusedSockets.add(ws);
+							// [Custom] 自動プル機能: フォーカス取得（blur→focus / 初回接続時フォーカスあり）を
+							// 契機に即 pull を試みる。前回 pull から interval 未経過ならスケジューラ側のガードで
+							// スキップされる。focusedSockets.add の後に呼ぶこと（hasOpenPages が参照するため）。
+							void this.autoPullScheduler?.maybePull();
 						} else if (text === "blur") {
 							this.focusedSockets.delete(ws);
 						} else {

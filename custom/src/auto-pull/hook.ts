@@ -7,6 +7,8 @@ export type PullNotifier = (phase: PullPhase) => void;
 /** GitOperations のうち pull に必要な能力だけを表す疎結合インターフェース。 */
 export interface PullCapable {
 	pull(remote?: string, repoRoot?: string | null): Promise<boolean>;
+	/** 現在の HEAD コミットハッシュ。取得できなければ null。pull 前後の差分判定に使う。 */
+	getCurrentCommitHash(repoRoot?: string | null): Promise<string | null>;
 }
 
 // 通知関数はサーバー起動時にのみ登録される。CLI 単体実行では未登録 = 通知 no-op。
@@ -36,18 +38,29 @@ function logAutoPull(message: string, detail?: unknown): void {
  * - pull 開始時に "start"、成功/スキップ時に "finished"、失敗時に "failed" を通知する。
  * - pull の失敗（ネットワーク断・認証・コンフリクト・ローカル変更衝突等）でも throw せず
  *   "failed" 通知に留める。定期実行ループを止めないため。
+ *
+ * 戻り値は「HEAD（コミット位置）が変化したか」= 画面更新（再取得）を促すべきか。
+ * - フラグ OFF / pull スキップ / pull 失敗: false。
+ * - pull 成功かつ pull 前後で HEAD が変化: true。同じなら false（取り込む差分が無かった）。
+ * - HEAD ハッシュが取得できなかった場合は安全側に倒して true（従来どおり更新）。
  */
 export async function maybeAutoPull(
 	git: PullCapable,
 	enabled: boolean | undefined,
 	repoRoot?: string | null,
-): Promise<void> {
-	if (!enabled) return;
+): Promise<boolean> {
+	if (!enabled) return false;
 	notifier?.("start");
 	try {
-		// 戻り値 pulled（事前条件スキップ時 false）は通知のみで使うため捨てる。
-		await git.pull("origin", repoRoot ?? null);
+		const before = await git.getCurrentCommitHash(repoRoot ?? null);
+		// pulled（事前条件スキップ時 false）は通知のためにも使う。
+		const pulled = await git.pull("origin", repoRoot ?? null);
 		notifier?.("finished");
+		if (!pulled) return false;
+		const after = await git.getCurrentCommitHash(repoRoot ?? null);
+		// どちらかが取得できなければ判定不能 → 安全側（更新する）に倒す。
+		if (before === null || after === null) return true;
+		return before !== after;
 	} catch (error) {
 		notifier?.("failed");
 		// 調査の核心: git の実エラー（exit code と stderr を含む execGit の throw）をそのまま出す。
@@ -55,5 +68,6 @@ export async function maybeAutoPull(
 		if (error instanceof Error && error.stack) {
 			logAutoPull("pull 失敗 (stack):", error.stack);
 		}
+		return false;
 	}
 }
