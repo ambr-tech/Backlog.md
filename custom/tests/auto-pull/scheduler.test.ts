@@ -117,4 +117,32 @@ describe("AutoPullScheduler.maybePull（interval ガード）", () => {
 			Date.now = realNow;
 		}
 	});
+
+	test("force=true なら interval 未経過でも pull する（ページ新規アクセス）", async () => {
+		const realNow = Date.now;
+		// now は interval より大きくしておく（初回 lastPullAt=0 との差が interval を超えるように）。
+		let now = 1_000_000;
+		Date.now = () => now;
+		try {
+			const { scheduler, runs } = makeScheduler({ intervalMs: 100000 });
+			await scheduler.maybePull(); // 初回 → pull、lastPullAt=now
+			expect(runs()).toBe(1);
+			await scheduler.maybePull(); // interval 未経過 → スキップ
+			expect(runs()).toBe(1);
+			await scheduler.maybePull({ force: true }); // force → interval を無視して pull
+			expect(runs()).toBe(2);
+		} finally {
+			Date.now = realNow;
+		}
+	});
+
+	test("force=true でも無効・ページ無し・in-flight は尊重する", async () => {
+		const offFlag = makeScheduler({ isEnabled: () => false });
+		await offFlag.scheduler.maybePull({ force: true });
+		expect(offFlag.runs()).toBe(0);
+
+		const noPages = makeScheduler({ hasOpenPages: () => false });
+		await noPages.scheduler.maybePull({ force: true });
+		expect(noPages.runs()).toBe(0);
+	});
 });

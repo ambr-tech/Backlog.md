@@ -200,6 +200,9 @@ export class BacklogServer {
 	private sockets = new Set<ServerWebSocket<unknown>>();
 	// [Custom] 自動プル機能: OS フォーカスを持つページの接続だけを追跡する（focus/blur メッセージで増減）。
 	private focusedSockets = new Set<ServerWebSocket<unknown>>();
+	// [Custom] 自動プル機能: まだ初回 pull をしていない新規接続。最初の focus 受信時に interval を
+	// 無視して即 pull する（ページにアクセスしたら経過時間に関係なく最新を取り込むため）。
+	private pendingInitialPull = new Set<ServerWebSocket<unknown>>();
 	private contentStore: ContentStore | null = null;
 	private searchService: SearchService | null = null;
 	private unsubscribeContentStore?: () => void;
@@ -473,6 +476,8 @@ export class BacklogServer {
 				websocket: {
 					open: (ws: ServerWebSocket) => {
 						this.sockets.add(ws);
+						// [Custom] 自動プル機能: 新規接続は初回 focus で interval を無視した pull の対象にする。
+						this.pendingInitialPull.add(ws);
 					},
 					// [Custom] 自動プル機能: focus/blur 通知で OS フォーカスを持つページを追跡する。
 					// それ以外のメッセージは従来通り keep-alive の pong を返す。
@@ -481,9 +486,11 @@ export class BacklogServer {
 						if (text === "focus") {
 							this.focusedSockets.add(ws);
 							// [Custom] 自動プル機能: フォーカス取得（blur→focus / 初回接続時フォーカスあり）を
-							// 契機に即 pull を試みる。前回 pull から interval 未経過ならスケジューラ側のガードで
-							// スキップされる。focusedSockets.add の後に呼ぶこと（hasOpenPages が参照するため）。
-							void this.autoPullScheduler?.maybePull();
+							// 契機に即 pull を試みる。focusedSockets.add の後に呼ぶこと（hasOpenPages が参照するため）。
+							// 新規接続（ページアクセス）の最初の focus は interval を無視して必ず pull する。
+							// Set.delete は要素が存在した場合に true を返すので「初回接続か」の判定に使える。
+							const isInitial = this.pendingInitialPull.delete(ws);
+							void this.autoPullScheduler?.maybePull({ force: isInitial });
 						} else if (text === "blur") {
 							this.focusedSockets.delete(ws);
 						} else {
@@ -493,6 +500,7 @@ export class BacklogServer {
 					close: (ws: ServerWebSocket) => {
 						this.sockets.delete(ws);
 						this.focusedSockets.delete(ws); // [Custom] 自動プル機能: 切断時にフォーカス追跡からも除去
+						this.pendingInitialPull.delete(ws); // [Custom] 自動プル機能: 初回 pull 待ち集合からも除去
 					},
 				},
 				/* biome-ignore format: keep cast on single line below for type narrowing */

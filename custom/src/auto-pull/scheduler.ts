@@ -44,15 +44,17 @@ export class AutoPullScheduler {
 	/**
 	 * interval ガードを通して 1 回分の pull を試みる共通入口。
 	 * 定期 tick（setInterval）からも、フォーカス取得イベント（blur→focus）からも呼ばれる。
-	 * 前回が継続中 / フラグ OFF / 開いているページが無い / 前回 pull から interval 未経過、
+	 * `options.force` が true のときは interval ガードを無視して即 pull する（ページ新規アクセス時用）。
+	 * 前回が継続中 / フラグ OFF / 開いているページが無い /（force でなく）前回 pull から interval 未経過、
 	 * のいずれかなら何もしない。
 	 */
-	async maybePull(): Promise<void> {
+	async maybePull(options?: { force?: boolean }): Promise<void> {
+		const force = options?.force ?? false;
 		if (this.inFlight) return; // 前回の pull が継続中
 		if (!this.options.isEnabled()) return; // フラグ OFF
 		if (!this.options.hasOpenPages()) return; // 開いているページが無い
 		const now = Date.now();
-		if (now - this.lastPullAt < this.options.intervalMs) return; // 前回 pull から interval 未経過
+		if (!force && now - this.lastPullAt < this.options.intervalMs) return; // interval 未経過（force 時は無視）
 		this.lastPullAt = now; // 開始時刻を記録（連投は inFlight ガードが別途防ぐ）
 		this.inFlight = true;
 		try {
