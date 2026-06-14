@@ -17,9 +17,10 @@ export function setAutoPullNotifier(fn: PullNotifier | null): void {
 	notifier = fn;
 }
 
-// [Custom] 原因調査用ログ: auto-pull の各段階を `[auto-pull]` プレフィックス付きで標準エラーへ出す。
+// [Custom] 原因調査用ログ: pull 失敗時のみ `[auto-pull]` プレフィックス付きで標準エラーへ出す。
 // pull 失敗の理由（git の stderr を含む execGit の throw）をヘッダの「プル失敗」表示だけでなく
-// ログからも追えるよう常時出力する（auto-push の logAutoPush と同方針）。
+// ログからも追えるようにする（auto-push の logAutoPush と同方針）。
+// 正常系（開始/完了/スキップ）は定期実行のたびに大量出力されノイズになるため記録しない。
 function logAutoPull(message: string, detail?: unknown): void {
 	if (detail === undefined) {
 		console.error(`[auto-pull] ${message}`);
@@ -42,13 +43,10 @@ export async function maybeAutoPull(
 	repoRoot?: string | null,
 ): Promise<void> {
 	if (!enabled) return;
-	logAutoPull(`pull 開始: remote=origin repoRoot=${repoRoot ?? "(projectRoot)"}`);
 	notifier?.("start");
 	try {
-		const pulled = await git.pull("origin", repoRoot ?? null);
-		// pulled=false は pull() 内の事前条件（remoteOperations 無効 / filesystemOnly /
-		// 非 git リポジトリ / remote 未設定）でスキップされたことを意味する。
-		logAutoPull(pulled ? "pull 完了: pulled=true" : "pull スキップ: pulled=false (pull() の事前条件で未実行)");
+		// 戻り値 pulled（事前条件スキップ時 false）は通知のみで使うため捨てる。
+		await git.pull("origin", repoRoot ?? null);
 		notifier?.("finished");
 	} catch (error) {
 		notifier?.("failed");
