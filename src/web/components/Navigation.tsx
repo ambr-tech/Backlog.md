@@ -1,5 +1,6 @@
 import React from 'react';
 import ThemeToggle from './ThemeToggle';
+import { PushIndicator } from '../../../custom/src/auto-push/web/PushIndicator'; // [Custom] 自動プッシュ機能
 
 interface NavigationProps {
     projectName: string;
@@ -20,6 +21,7 @@ const Navigation: React.FC<NavigationProps> = ({projectName}) => {
                     >
                         Backlog.md
                     </a>
+                    <PushIndicator />
                 </div>
                 <ThemeToggle />
             </div>

@@ -16,6 +16,7 @@ export function migrateConfig(config: Partial<BacklogConfig>): BacklogConfig {
 		defaultPort: 6420,
 		remoteOperations: true,
 		autoCommit: false,
+		autoPush: false, // [Custom] 自動プッシュ機能: デフォルト false
 		bypassGitHooks: false,
 		checkActiveBranches: true,
 		activeBranchDays: 30,

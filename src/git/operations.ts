@@ -2,6 +2,7 @@ import { realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
 import type { BacklogConfig } from "../types/index.ts";
+import { maybeAutoPush } from "../../custom/src/auto-push/hook.ts"; // [Custom] 自動プッシュ機能
 
 type GitPathContext = {
 	repoRoot: string;
@@ -79,6 +80,7 @@ export class GitOperations {
 			return;
 		}
 		await this.execGit(args, { cwd: repoRoot });
+		await maybeAutoPush(this, this.config?.autoPush, repoRoot); // [Custom] 自動プッシュ機能
 	}
 
 	async commitChanges(message: string, repoRoot?: string | null): Promise<void> {
@@ -90,6 +92,7 @@ export class GitOperations {
 			args.push("--no-verify");
 		}
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
+		await maybeAutoPush(this, this.config?.autoPush, repoRoot); // [Custom] 自動プッシュ機能
 	}
 
 	async commitFiles(message: string, filePaths: string[], repoRoot?: string | null): Promise<void> {
@@ -130,6 +133,7 @@ export class GitOperations {
 		}
 		args.push("--", ...uniqueRelativePaths);
 		await this.execGit(args, { cwd: resolvedRepoRoot });
+		await maybeAutoPush(this, this.config?.autoPush, resolvedRepoRoot); // [Custom] 自動プッシュ機能
 	}
 
 	async resetIndex(repoRoot?: string | null): Promise<void> {
@@ -181,6 +185,7 @@ export class GitOperations {
 			args.push("--no-verify");
 		}
 		await this.execGit(args, { cwd: repoRoot ?? undefined });
+		await maybeAutoPush(this, this.config?.autoPush, repoRoot); // [Custom] 自動プッシュ機能
 	}
 
 	async retryGitOperation<T>(operation: () => Promise<T>, operationName: string, maxRetries = 3): Promise<T> {
@@ -275,6 +280,51 @@ export class GitOperations {
 			}
 			// Re-throw non-network errors
 			throw error;
+		}
+	}
+
+	/**
+	 * [Custom] 自動プッシュ機能: 現在のブランチを remote へ push する。
+	 * push する必要がないケース（リモート操作無効 / filesystem-only / 非 git リポジトリ / remote 未設定）は
+	 * 何もせず false を返す。実際の push 失敗（ネットワーク・認証・non-fast-forward 等）は throw する。
+	 */
+	async push(remote = "origin", repoRoot?: string | null): Promise<boolean> {
+		if (this.config?.remoteOperations === false) {
+			return false;
+		}
+		if (this.config?.filesystemOnly) {
+			return false;
+		}
+		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
+			return false;
+		}
+		if (!(await this.hasRemote(remote))) {
+			return false;
+		}
+		const cwd = repoRoot ?? undefined;
+		// [Custom] 自動プッシュ機能: upstream 未設定の新規ブランチでも失敗しないよう、
+		// 追跡ブランチが無ければ初回 push で --set-upstream する。
+		if (await this.hasUpstream(cwd)) {
+			await this.execGit(["push", remote, "--quiet"], { cwd });
+		} else {
+			await this.execGit(["push", "--set-upstream", remote, "HEAD", "--quiet"], { cwd });
+		}
+		return true;
+	}
+
+	/**
+	 * [Custom] 自動プッシュ機能: 現在のブランチに upstream 追跡ブランチが設定済みか判定する。
+	 * `@{u}` の解決が失敗（= upstream 未設定）すれば false。終了コードで判定するためロケール非依存。
+	 */
+	private async hasUpstream(cwd?: string): Promise<boolean> {
+		try {
+			await this.execGit(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"], {
+				readOnly: true,
+				cwd,
+			});
+			return true;
+		} catch {
+			return false;
 		}
 	}
 
