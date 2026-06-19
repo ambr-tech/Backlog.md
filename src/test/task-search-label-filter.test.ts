@@ -42,11 +42,15 @@ describe("createTaskSearchIndex label filtering", () => {
 		expect(results.map((t) => t.id)).toEqual(["task-2", "task-3"]);
 	});
 
-	// [Custom] Labels フィルタを AND 判定に変更したため期待値を更新
-	test("matches all of the selected labels (AND)", () => {
+	test("matches any of the selected labels by default", () => {
 		const index = createTaskSearchIndex(tasks);
 		const results = index.search({ labels: ["ui", "docs"] });
-		// task-3 のみが "ui" と "docs" の両方を持つ（task-2 は "ui" のみ）
+		expect(results.map((t) => t.id)).toEqual(["task-2", "task-3"]);
+	});
+
+	test("can require all selected labels", () => {
+		const index = createTaskSearchIndex(tasks);
+		const results = index.search({ labels: ["ui", "docs"], labelMatch: "all" });
 		expect(results.map((t) => t.id)).toEqual(["task-3"]);
 	});
 
