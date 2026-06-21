@@ -4,16 +4,19 @@
  */
 
 import Fuse from "fuse.js";
-import { matchesAllLabels } from "../../custom/src/label-and-filter/matchesAllLabels.ts"; // [Custom] Labels フィルタを AND 判定に統一
 import type { Task } from "../types/index.ts";
+import { labelsToLower } from "./label-filter.ts";
 import { NO_MILESTONE_FILTER_VALUE } from "./milestone-filter.ts";
 import { matchesModifiedFileFilters, normalizeModifiedFileFilters } from "./modified-files.ts";
+
+export type LabelMatchMode = "any" | "all";
 
 export interface TaskSearchOptions {
 	query?: string;
 	status?: string;
 	priority?: "high" | "medium" | "low";
 	labels?: string[];
+	labelMatch?: LabelMatchMode;
 	modifiedFiles?: string[];
 }
 
@@ -21,6 +24,7 @@ export interface SharedTaskFilterOptions {
 	query?: string;
 	priority?: "high" | "medium" | "low";
 	labels?: string[];
+	labelMatch?: LabelMatchMode;
 	modifiedFiles?: string[];
 	milestone?: string;
 	resolveMilestoneLabel?: (milestone: string) => string;
@@ -178,11 +182,20 @@ export function createTaskSearchIndex(tasks: Task[]): TaskSearchIndex {
 				results = results.filter((t) => t.priorityLower === priorityLower);
 			}
 
-			// Apply label filters (task must include all selected labels)
+			// Apply label filters. Interactive UI filters match any selected
+			// label; CLI-seeded --labels filters request all-label matching.
 			if (options.labels && options.labels.length > 0) {
-				// [Custom] Labels フィルタを OR から AND 判定に変更（MCP と挙動を統一）
-				const required = options.labels.map((label) => label.toLowerCase());
-				results = results.filter((t) => matchesAllLabels(t.labelsLower ?? [], required));
+				const required = labelsToLower(options.labels);
+				const labelMatch = options.labelMatch ?? "any";
+				results = results.filter((t) => {
+					if (!t.labelsLower || t.labelsLower.length === 0) {
+						return false;
+					}
+					const labelSet = new Set(t.labelsLower);
+					return labelMatch === "all"
+						? required.every((label) => labelSet.has(label))
+						: required.some((label) => labelSet.has(label));
+				});
 			}
 
 			const modifiedFiles = normalizeModifiedFileFilters(options.modifiedFiles);
@@ -233,6 +246,7 @@ export function applyTaskFilters(tasks: Task[], options: TaskFilterOptions, inde
 				status: options.status,
 				priority: options.priority,
 				labels: options.labels,
+				labelMatch: options.labelMatch,
 				modifiedFiles: options.modifiedFiles,
 			})
 		: [...tasks];
@@ -255,6 +269,7 @@ export function applySharedTaskFilters(
 			query: options.query,
 			priority: options.priority,
 			labels: options.labels,
+			labelMatch: options.labelMatch,
 			modifiedFiles: options.modifiedFiles,
 			milestone: options.milestone,
 			resolveMilestoneLabel: options.resolveMilestoneLabel,
