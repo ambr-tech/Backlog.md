@@ -18,6 +18,7 @@ describe("Web API errors", () => {
 	});
 });
 
+// [Custom:start] 変更系 API のリトライ無効化の回帰テスト
 describe("Web API retry behavior", () => {
 	const originalFetch = globalThis.fetch;
 	let fetchCalls = 0;
@@ -66,3 +67,4 @@ describe("Web API retry behavior", () => {
 		expect(fetchCalls).toBe(2);
 	});
 });
+// [Custom:end]
