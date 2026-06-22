@@ -90,11 +90,18 @@ export class ApiClient {
 	}
 
 	// Enhanced fetch with retry logic and better error handling
-	private async fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response> {
-		const { retries = 3, timeout = 10000 } = this.config;
+	private async fetchWithRetry(
+		url: string,
+		options: RequestInit = {},
+		overrides: RequestConfig = {},
+	): Promise<Response> {
+		const { retries = 3, timeout = 10000 } = { ...this.config, ...overrides };
+		const method = (options.method ?? "GET").toUpperCase();
+		const canRetry = method === "GET" || method === "HEAD";
+		const effectiveRetries = canRetry ? retries : 0;
 		let lastError: Error | undefined;
 
-		for (let attempt = 0; attempt <= retries; attempt++) {
+		for (let attempt = 0; attempt <= effectiveRetries; attempt++) {
 			try {
 				// Add timeout to the request
 				const controller = new AbortController();
@@ -131,7 +138,7 @@ export class ApiClient {
 				}
 
 				// For network errors or server errors, retry with exponential backoff
-				if (attempt < retries) {
+				if (attempt < effectiveRetries) {
 					const delay = Math.min(1000 * 2 ** attempt, 10000);
 					await new Promise((resolve) => setTimeout(resolve, delay));
 				}
@@ -142,12 +149,12 @@ export class ApiClient {
 		if (lastError instanceof ApiError) {
 			throw lastError;
 		}
-		throw new NetworkError(`Request failed after ${retries + 1} attempts: ${lastError?.message}`);
+		throw new NetworkError(`Request failed after ${effectiveRetries + 1} attempts: ${lastError?.message}`);
 	}
 
 	// Helper method for JSON responses
-	private async fetchJson<T>(url: string, options: RequestInit = {}): Promise<T> {
-		const response = await this.fetchWithRetry(url, options);
+	private async fetchJson<T>(url: string, options: RequestInit = {}, overrides: RequestConfig = {}): Promise<T> {
+		const response = await this.fetchWithRetry(url, options, overrides);
 		return response.json();
 	}
 	async fetchTasks(options?: {
@@ -245,10 +252,15 @@ export class ApiClient {
 	}
 
 	async createTask(task: Omit<Task, "id" | "createdDate">): Promise<Task> {
-		return this.fetchJson<Task>(`${API_BASE}/tasks`, {
-			method: "POST",
-			body: JSON.stringify(task),
-		});
+		// Task creation can include git auto-commit and must never be retried (non-idempotent).
+		return this.fetchJson<Task>(
+			`${API_BASE}/tasks`,
+			{
+				method: "POST",
+				body: JSON.stringify(task),
+			},
+			{ timeout: 120_000 },
+		);
 	}
 
 	async updateTask(id: string, updates: TaskUpdateRequest): Promise<Task> {
