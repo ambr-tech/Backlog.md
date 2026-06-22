@@ -91,7 +91,10 @@ export class ApiClient {
 
 	// Enhanced fetch with retry logic and better error handling
 	private async fetchWithRetry(url: string, options: RequestInit = {}): Promise<Response> {
-		const { retries = 3, timeout = 10000 } = this.config;
+		const { timeout = 10000 } = this.config;
+		const method = (options.method ?? "GET").toUpperCase();
+		const isSafeMethod = method === "GET" || method === "HEAD";
+		const retries = isSafeMethod ? (this.config.retries ?? 3) : 0;
 		let lastError: Error | undefined;
 
 		for (let attempt = 0; attempt <= retries; attempt++) {
