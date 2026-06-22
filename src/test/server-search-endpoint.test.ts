@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import { join } from "node:path";
 import { FileSystem } from "../file-system/operations.ts";
 import { BacklogServer } from "../server/index.ts";
@@ -203,6 +203,45 @@ describe("BacklogServer search endpoint", () => {
 		const fetched = await fetchJson<Task>(`/api/task/${shortId}`);
 		expect(fetched.id).toBe(created.id);
 		expect(fetched.title).toBe("Immediate fetch");
+	});
+
+	it("logs successful and failed task creation timings", async () => {
+		const consoleLog = spyOn(console, "log").mockImplementation(() => {});
+		try {
+			const createResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: "Timing log task", status: "To Do" }),
+			});
+			expect(createResponse.status).toBe(201);
+			const createdTask = (await createResponse.json()) as Task;
+
+			const invalidResponse = await fetch(`http://127.0.0.1:${serverPort}/api/tasks`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: "" }),
+			});
+			expect(invalidResponse.status).toBe(400);
+
+			const messages = consoleLog.mock.calls.map((args) => args.map(String).join(" "));
+			expect(messages.some((message) => /^\[web-task-create:\d+\] started$/.test(message))).toBe(true);
+			expect(
+				messages.some((message) => /^\[web-task-create:\d+\] parse request: \d+ms result=completed$/.test(message)),
+			).toBe(true);
+			expect(
+				messages.some((message) =>
+					new RegExp(
+						`^\\[web-task-create:\\d+\\] total: \\d+ms result=completed status=201 task=${createdTask.id}$`,
+					).test(message),
+				),
+			).toBe(true);
+			expect(
+				messages.some((message) => /^\[web-task-create:\d+\] total: \d+ms result=failed status=400$/.test(message)),
+			).toBe(true);
+			expect(messages.some((message) => message.includes("Timing log task"))).toBe(false);
+		} finally {
+			consoleLog.mockRestore();
+		}
 	});
 
 	it("appends comments through the task update API and indexes comment text", async () => {

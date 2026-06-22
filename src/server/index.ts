@@ -2,11 +2,11 @@ import { dirname, join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { $ } from "bun";
 import "../../custom/src/budget/types.ts"; // [Custom] 予算管理機能の型 augmentation を取り込み
-import { setAutoPushNotifier } from "../../custom/src/auto-push/hook.ts"; // [Custom] 自動プッシュ機能
-import { makeAutoPushBroadcaster } from "../../custom/src/auto-push/web-bridge.ts"; // [Custom] 自動プッシュ機能
 import { maybeAutoPull, setAutoPullNotifier } from "../../custom/src/auto-pull/hook.ts"; // [Custom] 自動プル機能
 import { AutoPullScheduler, DEFAULT_AUTO_PULL_INTERVAL_SECONDS } from "../../custom/src/auto-pull/scheduler.ts"; // [Custom] 自動プル機能
 import { makeAutoPullBroadcaster } from "../../custom/src/auto-pull/web-bridge.ts"; // [Custom] 自動プル機能
+import { setAutoPushNotifier } from "../../custom/src/auto-push/hook.ts"; // [Custom] 自動プッシュ機能
+import { makeAutoPushBroadcaster } from "../../custom/src/auto-push/web-bridge.ts"; // [Custom] 自動プッシュ機能
 import { Core } from "../core/backlog.ts";
 import type { ContentStore } from "../core/content-store.ts";
 import { initializeProject } from "../core/init.ts";
@@ -25,6 +25,7 @@ import {
 } from "../types/index.ts";
 import { watchConfig } from "../utils/config-watcher.ts";
 import { resolveMilestoneInputForStorage } from "../utils/milestone-storage.ts";
+import { measureAsync, measureSync, type TimingReporter } from "../utils/operation-timing.ts";
 import { getVersion } from "../utils/version.ts";
 
 // Regex pattern to match any prefix (letters followed by dash)
@@ -209,6 +210,7 @@ export class BacklogServer {
 	private storeReadyBroadcasted = false;
 	private configWatcher: { stop: () => void } | null = null;
 	private autoPullScheduler: AutoPullScheduler | null = null; // [Custom] 自動プル機能
+	private taskCreateRequestSequence = 0;
 
 	constructor(projectPath: string) {
 		this.core = new Core(projectPath, { enableWatchers: true });
@@ -866,62 +868,96 @@ export class BacklogServer {
 	}
 
 	private async handleCreateTask(req: Request): Promise<Response> {
-		const payload = await req.json();
+		const requestId = ++this.taskCreateRequestSequence;
+		const prefix = `[web-task-create:${requestId}]`;
+		const startedAt = performance.now();
+		let responseStatus = 500;
+		let createdTaskId: string | undefined;
+		const timingReporter: TimingReporter = (step, elapsedMs, result) => {
+			console.log(`${prefix} ${step}: ${Math.round(elapsedMs)}ms result=${result}`);
+		};
 
-		if (!payload || typeof payload.title !== "string" || payload.title.trim().length === 0) {
-			return Response.json({ error: "Title is required" }, { status: 400 });
-		}
-
-		const acceptanceCriteria = Array.isArray(payload.acceptanceCriteriaItems)
-			? payload.acceptanceCriteriaItems
-					.map((item: { text?: string; checked?: boolean }) => ({
-						text: String(item?.text ?? "").trim(),
-						checked: Boolean(item?.checked),
-					}))
-					.filter((item: { text: string }) => item.text.length > 0)
-			: [];
-		const definitionOfDoneAdd = Array.isArray(payload.definitionOfDoneAdd)
-			? payload.definitionOfDoneAdd
-					.map((item: unknown) => String(item ?? "").trim())
-					.filter((item: string) => item.length > 0)
-			: [];
-		const disableDefinitionOfDoneDefaults = Boolean(payload.disableDefinitionOfDoneDefaults);
-
+		console.log(`${prefix} started`);
 		try {
-			const milestone =
-				typeof payload.milestone === "string" ? await this.resolveMilestoneInput(payload.milestone) : undefined;
+			const payload = await measureAsync("parse request", timingReporter, async () => req.json());
 
-			const { task: createdTask } = await this.core.createTaskFromInput({
-				title: payload.title,
-				description: payload.description,
-				status: payload.status,
-				priority: payload.priority,
-				milestone,
-				labels: payload.labels,
-				assignee: payload.assignee,
-				dependencies: payload.dependencies,
-				references: payload.references,
-				modifiedFiles: payload.modifiedFiles,
-				parentTaskId: payload.parentTaskId,
-				implementationPlan: payload.implementationPlan,
-				implementationNotes: payload.implementationNotes,
-				finalSummary: payload.finalSummary,
-				acceptanceCriteria,
-				definitionOfDoneAdd,
-				disableDefinitionOfDoneDefaults,
-				// [Custom] 予算管理機能の入力を委譲
-				...(typeof payload.estimatedDays === "number" ? { estimatedDays: payload.estimatedDays } : {}),
-				...(typeof payload.actualDays === "number" ? { actualDays: payload.actualDays } : {}),
-				...(typeof payload.completedDate === "string" ? { completedDate: payload.completedDate } : {}),
-			});
-			return Response.json(createdTask, { status: 201 });
-		} catch (error) {
-			if (isCreateLockError(error)) {
-				const message = error instanceof Error ? error.message : "Failed to create task";
-				return Response.json({ error: message }, { status: 409 });
+			if (!payload || typeof payload.title !== "string" || payload.title.trim().length === 0) {
+				responseStatus = 400;
+				return Response.json({ error: "Title is required" }, { status: responseStatus });
 			}
-			const message = error instanceof Error ? error.message : "Failed to create task";
-			return Response.json({ error: message }, { status: 400 });
+
+			const { acceptanceCriteria, definitionOfDoneAdd, disableDefinitionOfDoneDefaults } = measureSync(
+				"normalize request",
+				timingReporter,
+				() => ({
+					acceptanceCriteria: Array.isArray(payload.acceptanceCriteriaItems)
+						? payload.acceptanceCriteriaItems
+								.map((item: { text?: string; checked?: boolean }) => ({
+									text: String(item?.text ?? "").trim(),
+									checked: Boolean(item?.checked),
+								}))
+								.filter((item: { text: string }) => item.text.length > 0)
+						: [],
+					definitionOfDoneAdd: Array.isArray(payload.definitionOfDoneAdd)
+						? payload.definitionOfDoneAdd
+								.map((item: unknown) => String(item ?? "").trim())
+								.filter((item: string) => item.length > 0)
+						: [],
+					disableDefinitionOfDoneDefaults: Boolean(payload.disableDefinitionOfDoneDefaults),
+				}),
+			);
+
+			try {
+				const milestone =
+					typeof payload.milestone === "string"
+						? await measureAsync("resolve milestone", timingReporter, async () =>
+								this.resolveMilestoneInput(payload.milestone),
+							)
+						: undefined;
+
+				const { task: createdTask } = await measureAsync("create task core", timingReporter, async () =>
+					this.core.createTaskFromInput(
+						{
+							title: payload.title,
+							description: payload.description,
+							status: payload.status,
+							priority: payload.priority,
+							milestone,
+							labels: payload.labels,
+							assignee: payload.assignee,
+							dependencies: payload.dependencies,
+							references: payload.references,
+							modifiedFiles: payload.modifiedFiles,
+							parentTaskId: payload.parentTaskId,
+							implementationPlan: payload.implementationPlan,
+							implementationNotes: payload.implementationNotes,
+							finalSummary: payload.finalSummary,
+							acceptanceCriteria,
+							definitionOfDoneAdd,
+							disableDefinitionOfDoneDefaults,
+							// [Custom] 予算管理機能の入力を委譲
+							...(typeof payload.estimatedDays === "number" ? { estimatedDays: payload.estimatedDays } : {}),
+							...(typeof payload.actualDays === "number" ? { actualDays: payload.actualDays } : {}),
+							...(typeof payload.completedDate === "string" ? { completedDate: payload.completedDate } : {}),
+						},
+						undefined,
+						timingReporter,
+					),
+				);
+				createdTaskId = createdTask.id;
+				responseStatus = 201;
+				return Response.json(createdTask, { status: responseStatus });
+			} catch (error) {
+				responseStatus = isCreateLockError(error) ? 409 : 400;
+				const message = error instanceof Error ? error.message : "Failed to create task";
+				return Response.json({ error: message }, { status: responseStatus });
+			}
+		} finally {
+			const result = responseStatus < 400 ? "completed" : "failed";
+			const task = createdTaskId ? ` task=${createdTaskId}` : "";
+			console.log(
+				`${prefix} total: ${Math.round(performance.now() - startedAt)}ms result=${result} status=${responseStatus}${task}`,
+			);
 		}
 	}
 

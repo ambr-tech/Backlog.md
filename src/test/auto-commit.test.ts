@@ -90,6 +90,20 @@ describe("Auto-commit configuration", () => {
 			expect(isClean).toBe(false);
 		});
 
+		it("reports file creation timing without git timing when autoCommit is disabled", async () => {
+			const steps: string[] = [];
+
+			await core.createTaskFromInput({ title: "Timed task without commit" }, false, (step) => steps.push(step));
+
+			expect(steps).toContain("validate dependencies");
+			expect(steps).toContain("wait for create lock");
+			expect(steps).toContain("generate task id");
+			expect(steps).toContain("write task file");
+			expect(steps).toContain("reload saved task");
+			expect(steps).toContain("resolve auto-commit setting");
+			expect(steps.some((step) => step.startsWith("git "))).toBe(false);
+		});
+
 		it("should auto-commit when explicitly passing true to createTask", async () => {
 			const task: Task = {
 				id: "task-2",
@@ -190,6 +204,26 @@ describe("Auto-commit configuration", () => {
 			const git = await core.getGitOps();
 			const isClean = await git.isClean();
 			expect(isClean).toBe(true);
+		});
+
+		it("reports commit and auto-push timing when autoCommit is enabled", async () => {
+			const steps: string[] = [];
+			const config = await core.filesystem.loadConfig();
+			if (config) {
+				config.autoPush = true;
+				config.remoteOperations = false;
+				await core.filesystem.saveConfig(config);
+			}
+
+			await core.createTaskFromInput({ title: "Timed task with commit" }, undefined, (step) => steps.push(step));
+
+			expect(steps).toContain("git resolve repository");
+			expect(steps).toContain("git reset index");
+			expect(steps).toContain("git stage task file");
+			expect(steps).toContain("git inspect staged changes");
+			expect(steps).toContain("git commit");
+			expect(steps).toContain("git auto-push");
+			expect(steps).toContain("git transaction");
 		});
 
 		it("should not auto-commit when explicitly passing false to createTask", async () => {

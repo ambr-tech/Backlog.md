@@ -1,7 +1,10 @@
 import { rename as moveFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { applyBudgetCreateInput, applyBudgetUpdateInput } from "../../custom/src/budget/apply-input.ts"; // [Custom] 予算管理機能の委譲呼び出し
-import { applyCompletedDateOnCreate, applyCompletedDateOnTransition } from "../../custom/src/budget/auto-complete-date.ts"; // [Custom] 予算管理機能の委譲呼び出し
+import {
+	applyCompletedDateOnCreate,
+	applyCompletedDateOnTransition,
+} from "../../custom/src/budget/auto-complete-date.ts"; // [Custom] 予算管理機能の委譲呼び出し
 import { DEFAULT_STATUSES, FALLBACK_STATUS } from "../constants/index.ts";
 import { FileSystem } from "../file-system/operations.ts";
 import { GitOperations } from "../git/operations.ts";
@@ -38,6 +41,7 @@ import {
 	normalizeMilestoneFilterValue,
 	resolveClosestMilestoneFilterValue,
 } from "../utils/milestone-filter.ts";
+import { measureAsync, measureSync, type TimingReporter } from "../utils/operation-timing.ts";
 import { buildIdRegex, extractAnyPrefix, getPrefixForType, normalizeId } from "../utils/prefix-config.ts";
 import {
 	getCanonicalStatus as resolveCanonicalStatus,
@@ -955,26 +959,36 @@ export class Core {
 		filepath: string,
 		isDraft: boolean,
 		autoCommit?: boolean,
+		timingReporter?: TimingReporter,
 	): Promise<Task | null> {
-		const savedTask = isDraft ? await this.fs.loadDraft(task.id) : await this.fs.loadTask(task.id);
+		const savedTask = await measureAsync("reload saved task", timingReporter, async () =>
+			isDraft ? this.fs.loadDraft(task.id) : this.fs.loadTask(task.id),
+		);
 
 		if (!isDraft && this.contentStore && savedTask) {
-			this.contentStore.upsertTask(savedTask);
+			measureSync("update content store", timingReporter, () => this.contentStore?.upsertTask(savedTask));
 		}
 
-		if (await this.shouldAutoCommit(autoCommit)) {
+		const shouldAutoCommit = await measureAsync("resolve auto-commit setting", timingReporter, async () =>
+			this.shouldAutoCommit(autoCommit),
+		);
+		if (shouldAutoCommit) {
 			if (isDraft) {
-				await this.git.addFile(filepath);
-				await this.git.commitTaskChange(task.id, `Create draft ${task.id}`, filepath);
+				await measureAsync("git stage draft file", timingReporter, async () => this.git.addFile(filepath));
+				await this.git.commitTaskChange(task.id, `Create draft ${task.id}`, filepath, timingReporter);
 			} else {
-				await this.git.addAndCommitTaskFile(task.id, filepath, "create");
+				await this.git.addAndCommitTaskFile(task.id, filepath, "create", timingReporter);
 			}
 		}
 
 		return savedTask;
 	}
 
-	async createTaskFromInput(input: TaskCreateInput, autoCommit?: boolean): Promise<{ task: Task; filePath?: string }> {
+	async createTaskFromInput(
+		input: TaskCreateInput,
+		autoCommit?: boolean,
+		timingReporter?: TimingReporter,
+	): Promise<{ task: Task; filePath?: string }> {
 		if (!input.title || input.title.trim().length === 0) {
 			throw new Error("Title is required to create a task.");
 		}
@@ -993,9 +1007,10 @@ export class Core {
 		const normalizedDocumentation = normalizeStringList(input.documentation) ?? [];
 		const normalizedModifiedFiles = normalizeStringList(input.modifiedFiles) ?? [];
 
-		const { valid: validDependencies, invalid: invalidDependencies } = await validateDependencies(
-			normalizedDependencies,
-			this,
+		const { valid: validDependencies, invalid: invalidDependencies } = await measureAsync(
+			"validate dependencies",
+			timingReporter,
+			async () => validateDependencies(normalizedDependencies, this),
 		);
 		if (invalidDependencies.length > 0) {
 			throw new Error(
@@ -1008,7 +1023,9 @@ export class Core {
 			if (isDraft) {
 				status = "Draft";
 			} else {
-				status = await this.requireCanonicalStatus(requestedStatus);
+				status = await measureAsync("resolve task status", timingReporter, async () =>
+					this.requireCanonicalStatus(requestedStatus),
+				);
 			}
 		}
 
@@ -1030,7 +1047,7 @@ export class Core {
 					}))
 					.filter((criterion) => criterion.text.length > 0)
 			: [];
-		const config = await this.fs.loadConfig();
+		const config = await measureAsync("load task defaults", timingReporter, async () => this.fs.loadConfig());
 		const definitionOfDoneItems = buildDefinitionOfDoneItems({
 			defaults: config?.definitionOfDone,
 			add: input.definitionOfDoneAdd,
@@ -1038,44 +1055,54 @@ export class Core {
 		});
 		const resolvedStatus = isDraft ? "Draft" : status || config?.defaultStatus || FALLBACK_STATUS;
 
-		const { task, filePath } = await this.withCreateLock(async () => {
-			const id = await this.generateNextId(entityType, isDraft ? undefined : input.parentTaskId);
-			const ordinal = await this.resolveCreateOrdinal(input.ordinal, isDraft);
-			const task: Task = {
-				id,
-				title: input.title.trim(),
-				status: resolvedStatus,
-				assignee: normalizedAssignees,
-				labels: normalizedLabels,
-				dependencies: validDependencies,
-				references: normalizedReferences,
-				documentation: normalizedDocumentation,
-				modifiedFiles: normalizedModifiedFiles,
-				rawContent: input.rawContent ?? "",
-				createdDate,
-				...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
-				...(priority && { priority }),
-				...(typeof ordinal === "number" && { ordinal }),
-				...(typeof input.milestone === "string" &&
-					input.milestone.trim().length > 0 && {
-						milestone: input.milestone.trim(),
-					}),
-				...(typeof input.description === "string" && { description: input.description }),
-				...(typeof input.implementationPlan === "string" && { implementationPlan: input.implementationPlan }),
-				...(typeof input.implementationNotes === "string" && { implementationNotes: input.implementationNotes }),
-				...(typeof input.finalSummary === "string" && { finalSummary: input.finalSummary }),
-				...(acceptanceCriteriaItems.length > 0 && { acceptanceCriteriaItems }),
-				...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
-			};
+		const lockRequestedAt = performance.now();
+		const { task, filePath } = await measureAsync("create lock scope", timingReporter, async () =>
+			this.withCreateLock(async () => {
+				timingReporter?.("wait for create lock", performance.now() - lockRequestedAt, "completed");
+				const id = await measureAsync("generate task id", timingReporter, async () =>
+					this.generateNextId(entityType, isDraft ? undefined : input.parentTaskId),
+				);
+				const ordinal = await measureAsync("resolve task ordinal", timingReporter, async () =>
+					this.resolveCreateOrdinal(input.ordinal, isDraft),
+				);
+				const task: Task = {
+					id,
+					title: input.title.trim(),
+					status: resolvedStatus,
+					assignee: normalizedAssignees,
+					labels: normalizedLabels,
+					dependencies: validDependencies,
+					references: normalizedReferences,
+					documentation: normalizedDocumentation,
+					modifiedFiles: normalizedModifiedFiles,
+					rawContent: input.rawContent ?? "",
+					createdDate,
+					...(input.parentTaskId && { parentTaskId: input.parentTaskId }),
+					...(priority && { priority }),
+					...(typeof ordinal === "number" && { ordinal }),
+					...(typeof input.milestone === "string" &&
+						input.milestone.trim().length > 0 && {
+							milestone: input.milestone.trim(),
+						}),
+					...(typeof input.description === "string" && { description: input.description }),
+					...(typeof input.implementationPlan === "string" && { implementationPlan: input.implementationPlan }),
+					...(typeof input.implementationNotes === "string" && { implementationNotes: input.implementationNotes }),
+					...(typeof input.finalSummary === "string" && { finalSummary: input.finalSummary }),
+					...(acceptanceCriteriaItems.length > 0 && { acceptanceCriteriaItems }),
+					...(definitionOfDoneItems && definitionOfDoneItems.length > 0 && { definitionOfDoneItems }),
+				};
 
-			applyBudgetCreateInput(task, input); // [Custom] 予算管理機能: 入力からの値の取り込み
-			applyCompletedDateOnCreate(task, config); // [Custom] 予算管理機能: 完了状態で新規作成時の自動セット
+				applyBudgetCreateInput(task, input); // [Custom] 予算管理機能: 入力からの値の取り込み
+				applyCompletedDateOnCreate(task, config); // [Custom] 予算管理機能: 完了状態で新規作成時の自動セット
 
-			const filePath = await this.writePreparedTask(task, isDraft);
-			return { task, filePath };
-		});
+				const filePath = await measureAsync("write task file", timingReporter, async () =>
+					this.writePreparedTask(task, isDraft),
+				);
+				return { task, filePath };
+			}),
+		);
 
-		const savedTask = await this.finalizeCreatedTask(task, filePath, isDraft, autoCommit);
+		const savedTask = await this.finalizeCreatedTask(task, filePath, isDraft, autoCommit, timingReporter);
 		return { task: savedTask ?? task, filePath };
 	}
 

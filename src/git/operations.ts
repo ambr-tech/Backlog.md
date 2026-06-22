@@ -1,9 +1,10 @@
 import { realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { $ } from "bun";
-import type { BacklogConfig } from "../types/index.ts";
 import { maybeAutoPush } from "../../custom/src/auto-push/hook.ts"; // [Custom] 自動プッシュ機能
 import { runGitExclusive } from "../../custom/src/git-lock/git-mutex.ts"; // [Custom] git操作の直列化
+import type { BacklogConfig } from "../types/index.ts";
+import { measureAsync, type TimingReporter } from "../utils/operation-timing.ts";
 
 type GitPathContext = {
 	repoRoot: string;
@@ -70,18 +71,34 @@ export class GitOperations {
 		await this.execGit(["add", ...relativePaths]);
 	}
 
-	async commitTaskChange(taskId: string, message: string, filePath?: string): Promise<void> {
+	async commitTaskChange(
+		taskId: string,
+		message: string,
+		filePath?: string,
+		timingReporter?: TimingReporter,
+	): Promise<void> {
 		const commitMessage = `${taskId} - ${message}`;
 		const args = ["commit", "-m", commitMessage];
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
-		const repoRoot = filePath ? (await this.getPathContext(filePath))?.repoRoot : undefined;
-		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
+		const repoRoot = filePath
+			? await measureAsync(
+					"git resolve repository",
+					timingReporter,
+					async () => (await this.getPathContext(filePath))?.repoRoot,
+				)
+			: undefined;
+		const isRepository = await measureAsync("git verify repository", timingReporter, async () =>
+			this.isRepository(repoRoot ?? this.projectRoot),
+		);
+		if (!isRepository) {
 			return;
 		}
-		await this.execGit(args, { cwd: repoRoot });
-		await maybeAutoPush(this, this.config?.autoPush, repoRoot); // [Custom] 自動プッシュ機能
+		await measureAsync("git commit", timingReporter, async () => this.execGit(args, { cwd: repoRoot }));
+		if (this.config?.autoPush) {
+			await measureAsync("git auto-push", timingReporter, async () => maybeAutoPush(this, true, repoRoot)); // [Custom] 自動プッシュ機能
+		}
 	}
 
 	async commitChanges(message: string, repoRoot?: string | null): Promise<void> {
@@ -169,12 +186,17 @@ export class GitOperations {
 		await this.execGit(["reset", "HEAD", "--", ...uniqueRelativePaths], { cwd: resolvedRepoRoot });
 	}
 
-	async commitStagedChanges(message: string, repoRoot?: string | null): Promise<void> {
-		if (!(await this.isRepository(repoRoot ?? this.projectRoot))) {
+	async commitStagedChanges(message: string, repoRoot?: string | null, timingReporter?: TimingReporter): Promise<void> {
+		const isRepository = await measureAsync("git verify staged repository", timingReporter, async () =>
+			this.isRepository(repoRoot ?? this.projectRoot),
+		);
+		if (!isRepository) {
 			return;
 		}
 		// Check if there are any staged changes before committing
-		const { stdout: status } = await this.execGit(["status", "--porcelain"], { cwd: repoRoot ?? undefined });
+		const { stdout: status } = await measureAsync("git inspect staged changes", timingReporter, async () =>
+			this.execGit(["status", "--porcelain"], { cwd: repoRoot ?? undefined }),
+		);
 		const hasStagedChanges = status.split("\n").some((line) => line.match(/^[AMDRC]/));
 
 		if (!hasStagedChanges) {
@@ -185,8 +207,10 @@ export class GitOperations {
 		if (this.config?.bypassGitHooks) {
 			args.push("--no-verify");
 		}
-		await this.execGit(args, { cwd: repoRoot ?? undefined });
-		await maybeAutoPush(this, this.config?.autoPush, repoRoot); // [Custom] 自動プッシュ機能
+		await measureAsync("git commit", timingReporter, async () => this.execGit(args, { cwd: repoRoot ?? undefined }));
+		if (this.config?.autoPush) {
+			await measureAsync("git auto-push", timingReporter, async () => maybeAutoPush(this, true, repoRoot)); // [Custom] 自動プッシュ機能
+		}
 	}
 
 	async retryGitOperation<T>(operation: () => Promise<T>, operationName: string, maxRetries = 3): Promise<T> {
@@ -391,31 +415,45 @@ export class GitOperations {
 		const lowerMessage = message.toLowerCase();
 		return networkErrorPatterns.some((pattern) => lowerMessage.includes(pattern));
 	}
-	async addAndCommitTaskFile(taskId: string, filePath: string, action: "create" | "update" | "archive"): Promise<void> {
+	async addAndCommitTaskFile(
+		taskId: string,
+		filePath: string,
+		action: "create" | "update" | "archive",
+		timingReporter?: TimingReporter,
+	): Promise<void> {
 		const actionMessages = {
 			create: `Create task ${taskId}`,
 			update: `Update task ${taskId}`,
 			archive: `Archive task ${taskId}`,
 		};
 
-		const context = await this.getPathContext(filePath);
+		const context = await measureAsync("git resolve repository", timingReporter, async () =>
+			this.getPathContext(filePath),
+		);
 		const repoRoot = context?.repoRoot ?? this.projectRoot;
-		if (!(await this.isRepository(repoRoot))) {
+		const isRepository = await measureAsync("git verify repository", timingReporter, async () =>
+			this.isRepository(repoRoot),
+		);
+		if (!isRepository) {
 			return;
 		}
 		const pathForAdd = context?.relativePath ?? relative(this.projectRoot, filePath).replace(/\\/g, "/");
 
 		// Retry git operations to handle transient failures
-		await this.retryGitOperation(async () => {
-			// Reset index to ensure only the specific file is staged
-			await this.resetIndex(repoRoot);
+		await measureAsync("git transaction", timingReporter, async () =>
+			this.retryGitOperation(async () => {
+				// Reset index to ensure only the specific file is staged
+				await measureAsync("git reset index", timingReporter, async () => this.resetIndex(repoRoot));
 
-			// Stage only the specific task file
-			await this.execGit(["add", pathForAdd], { cwd: repoRoot });
+				// Stage only the specific task file
+				await measureAsync("git stage task file", timingReporter, async () =>
+					this.execGit(["add", pathForAdd], { cwd: repoRoot }),
+				);
 
-			// Commit only the staged file
-			await this.commitStagedChanges(actionMessages[action], repoRoot);
-		}, `commit task file ${filePath}`);
+				// Commit only the staged file
+				await this.commitStagedChanges(actionMessages[action], repoRoot, timingReporter);
+			}, `commit task file ${filePath}`),
+		);
 	}
 
 	async stageBacklogDirectory(backlogDir = "backlog"): Promise<string | null> {
